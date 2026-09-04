@@ -1,0 +1,1583 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avito AI Reviewer — прототип v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#F3EFFF; --surface:#FFFFFF; --ink:#1B1D33; --muted:#6B6E85; --line:#E4DFF4;
+  --blue:#00AAFF; --green:#04E061; --red:#FF4053; --purple:#965EEB; --yellow:#FFC72C;
+  --p-red:#FFE1E5; --p-yellow:#FFF3C7; --p-blue:#DAF2FF; --p-purple:#EADFFF; --p-green:#D8F9E6;
+  --r:16px; --r-s:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Manrope,"Segoe UI",system-ui,sans-serif;font-size:15px;line-height:1.45}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible,[tabindex]:focus-visible,select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+select,input[type=text],input[type=url]{font:inherit;padding:7px 10px;border-radius:10px;border:1.5px solid var(--line);background:#fff;color:var(--ink)}
+textarea{font:inherit}
+h1,h2,h3{margin:0;font-weight:800;letter-spacing:-.01em}
+h1{font-size:28px;line-height:1.15}
+h2{font-size:20px}
+h3{font-size:15px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.top{position:sticky;top:0;z-index:20;background:rgba(243,239,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.top-in{max-width:1400px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:18px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px}
+.brand .logo{width:36px;height:34px;display:grid;place-items:center}
+.brand .logo svg{width:34px;height:32px;display:block}
+.brand small{font-weight:600;color:var(--muted);font-size:13px;margin-left:4px}
+.roles{display:flex;gap:4px;margin-left:auto;background:#fff;padding:4px;border-radius:999px;border:1px solid var(--line);flex-wrap:wrap}
+.roles button{padding:8px 12px;border-radius:999px;font-weight:600;color:var(--muted);font-size:14px}
+.roles button.on{background:var(--ink);color:#fff}
+.roles button .n{display:inline-block;min-width:18px;padding:0 5px;border-radius:999px;background:var(--red);color:#fff;font-size:11px;font-weight:700;margin-left:6px;line-height:18px;vertical-align:1px}
+.roles .sep{width:1px;background:var(--line);margin:4px 4px}
+.demo{max-width:1400px;margin:14px auto 0;padding:0 24px}
+.demo-in{background:var(--ink);color:#fff;border-radius:var(--r);padding:12px 18px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.demo-in b{font-weight:700;margin-right:6px}
+.step{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:12.5px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);cursor:pointer}
+.step i{width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,.15);display:grid;place-items:center;font-style:normal;font-size:10px;font-weight:700}
+.step.done{color:#fff;background:rgba(4,224,97,.18)}.step.done i{background:var(--green);color:var(--ink)}
+.step.now{color:#fff;background:rgba(0,170,255,.22)}.step.now i{background:var(--blue);color:#fff}
+.page{max-width:1400px;margin:0 auto;padding:20px 24px 60px}
+.screen{display:none}.screen.on{display:block}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:18px}
+.head p{margin:6px 0 0;color:var(--muted);max-width:820px}
+.card{background:var(--surface);border-radius:var(--r);padding:18px 20px}
+.grid{display:grid;gap:16px}
+.grid>*{min-width:0}
+.row>*{min-width:0}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}.g21{grid-template-columns:2fr 1fr}.g12{grid-template-columns:1fr 2fr}.g31{grid-template-columns:3fr 1fr}
+.row{display:flex;align-items:center;gap:10px}.sp{justify-content:space-between}.wrap{flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;font-weight:700;background:#fff;border:1.5px solid var(--line);transition:transform .08s}
+.btn:active{transform:scale(.98)}
+.btn.pri{background:var(--blue);color:#fff;border-color:var(--blue)}.btn.ok{background:var(--green);color:var(--ink);border-color:var(--green)}.btn.ghost{background:transparent}.btn.danger{background:var(--p-red);color:#B3182B;border-color:var(--p-red)}
+.btn.sm{padding:6px 11px;font-size:13px;border-radius:9px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.tag{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#F1EEFA;color:var(--muted);white-space:nowrap}
+.tag.b{background:var(--p-blue);color:#006FA8}.tag.g{background:var(--p-green);color:#0A7A3E}.tag.r{background:var(--p-red);color:#B3182B}.tag.p{background:var(--p-purple);color:#5E2FB4}.tag.y{background:var(--p-yellow);color:#8A5B00}.tag.k{background:var(--ink);color:#fff}
+.kpi{display:flex;flex-direction:column;gap:2px}.kpi b{font-size:26px;font-weight:800;letter-spacing:-.02em}.kpi span{color:var(--muted);font-size:13px}
+.bar{height:8px;border-radius:999px;background:#EEEAF8;overflow:hidden;position:relative}.bar i{display:block;height:100%;border-radius:999px;background:var(--blue)}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:12.5px;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:10px;border-bottom:1px solid #F0EDF8;vertical-align:middle}
+tr.click{cursor:pointer}tr.click:hover td{background:#FAF8FF}
+tr.hw td{background:#FAF8FF;font-weight:700;padding:9px 10px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.hint{background:linear-gradient(120deg,var(--purple),var(--blue));color:#fff;border-radius:var(--r);padding:16px 20px}.hint h3{color:#fff;margin-bottom:4px}
+.note{background:#FAF8FF;border-radius:10px;padding:10px 12px;font-size:13px}
+/* course select + strip timeline */
+.cs{display:flex;align-items:center;gap:10px}
+.csel{position:relative;display:inline-flex;align-items:center}
+.csel::before{content:"";position:absolute;left:14px;width:8px;height:8px;border-radius:50%;background:var(--blue);pointer-events:none}
+.csel::after{content:"";position:absolute;right:16px;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg) translate(-2px,-2px);pointer-events:none;transition:border-color .15s}
+.csel select{appearance:none;-webkit-appearance:none;font:inherit;font-weight:700;font-size:14.5px;color:var(--ink);padding:9px 40px 9px 32px;border-radius:999px;border:1.5px solid var(--line);background:#fff;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.csel select:hover{border-color:#C9C3E4}
+.csel:hover::after{border-color:var(--ink)}
+.csel select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,170,255,.16)}
+.strip{position:relative;height:48px;margin:2px 10px 12px}
+.strip .ax{position:absolute;left:0;right:0;top:29px;height:2px;background:#EDE9F8;border-radius:2px}
+.strip .mk{position:absolute;top:21px;transform:translateX(-50%);cursor:pointer}
+.strip .mk i{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;font-style:normal;font-size:10.5px;font-weight:800;color:#fff;background:#D5D0E8;border:2px solid var(--surface);transition:transform .12s}
+.strip .mk b{position:absolute;bottom:23px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:11px;font-weight:700;color:var(--muted)}
+.strip .mk.over i{background:var(--red)}.strip .mk.soon i{background:var(--yellow);color:var(--ink)}.strip .mk.done i{background:var(--green);color:var(--ink)}.strip .mk.active i{background:var(--blue)}
+.strip .mk.over b{color:#B3182B}.strip .mk.soon b{color:#8A5B00}.strip .mk.active b{color:#006FA8}
+.strip .mk:hover i{transform:scale(1.18)}
+.strip .today{position:absolute;top:20px;width:2px;height:20px;background:var(--ink);border-radius:2px}
+.strip .today span{position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:10.5px;font-weight:700;white-space:nowrap;background:var(--surface);padding:0 4px}
+/* matrix */
+.mx{overflow-x:auto;max-width:100%;border-radius:12px;overscroll-behavior-x:contain}
+.mx table{border-collapse:separate;border-spacing:0;min-width:900px}
+.mx th{border-bottom:1px solid var(--line);vertical-align:bottom}
+.mx th.stn{position:sticky;left:0;background:#fff;z-index:2;min-width:160px}
+.mx th.hwh{cursor:pointer;min-width:122px;padding:6px 8px;border-radius:10px 10px 0 0;text-align:center}
+.mx th.hwh:hover{background:#F1EEFA}
+.mx th.hwh .hwn{font-size:11.5px;color:var(--muted);font-weight:700}
+.mx th.hwh .hwt{font-size:12.5px;color:var(--ink);font-weight:700;line-height:1.25;white-space:normal;min-height:32px}
+.mx th.hwh .dl{font-size:11px;font-weight:700;margin-top:4px;color:var(--muted)}
+.mx th.hwh.over .dl{color:#B3182B}.mx th.hwh.soon .dl{color:#8A5B00}.mx th.hwh.done .dl{color:#0A7A3E}.mx th.hwh.active .dl{color:#006FA8}
+.tl{position:relative;height:6px;border-radius:999px;background:#EEEAF8;margin:8px 4px 2px}
+.tl i{position:absolute;top:0;height:100%;border-radius:999px}
+.tl .sub{background:#C9C3E4}.tl .rev{background:var(--blue)}.tl.over .rev{background:var(--red)}.tl.soon .rev{background:var(--yellow)}.tl.done .rev{background:var(--green)}
+.tl b{position:absolute;top:-4px;width:2px;height:14px;background:var(--ink);margin-left:-1px}
+.mx td.stn{position:sticky;left:0;background:#fff;font-weight:700;z-index:1;white-space:nowrap}
+.mx td.stn small{display:block;font-weight:500;color:var(--muted);font-size:11.5px}
+.mx td.c{text-align:center;padding:5px}
+.mx td.c span{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:70px;padding:5px 8px;border-radius:9px;font-weight:800;font-size:14px;cursor:pointer;line-height:1.1}
+.mx td.c span small{font-size:10.5px;font-weight:600;opacity:.85;margin-top:1px}
+.c-checked{background:var(--p-green);color:#0A7A3E}.c-draft{background:var(--p-blue);color:#006FA8}.c-abstain{background:var(--p-purple);color:#5E2FB4}.c-wait{background:var(--p-yellow);color:#8A5B00}.c-missing{background:var(--p-red);color:#B3182B}.c-late{background:var(--p-blue);color:#006FA8;box-shadow:inset 0 0 0 1.5px var(--red)}.c-none{background:#F5F3FB;color:#B9B5CF;font-weight:600}.c-locked{background:none;color:#D6D2E8;font-weight:600}
+.mx tr.sum td{background:#FAF8FF;font-weight:700;font-size:12.5px}
+.mx tr.sum td.stn{background:#FAF8FF}
+.leg{display:flex;gap:8px 14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);align-items:center}.leg span{display:inline-flex;gap:5px;align-items:center}.leg i{width:14px;height:14px;border-radius:4px;display:inline-block}
+/* reviewer schedule */
+.days{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.days .d{display:grid;gap:3px;align-content:center;justify-items:center;min-height:58px;padding:6px 2px;border-radius:12px;background:#FAF8FF;font-size:10.5px;line-height:1.15;white-space:nowrap;cursor:pointer;border:1.5px solid transparent;color:var(--muted);transition:background .12s}
+.days .d span{display:block;letter-spacing:.01em}
+.days .d b{display:block;font-size:14px;font-weight:800;color:var(--ink)}
+.days .d:hover{background:#F1EEFA}
+.days .d.off{opacity:.45}
+.days .d.chp{background:var(--p-red);border-color:var(--red)}.days .d.chp b{color:#B3182B}
+.days .d.today{border-color:var(--ink);background:#fff}
+/* workspace */
+.ws{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:16px;align-items:start}
+.code{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.6px;line-height:1.6;white-space:pre;overflow:auto;background:#FBFAFF;border:1px solid var(--line);border-radius:var(--r-s);padding:14px 16px;counter-reset:ln}
+.code .ln{display:block}.code .ln::before{counter-increment:ln;content:counter(ln);display:inline-block;width:28px;color:#B9B5CF;text-align:right;margin-right:14px;user-select:none}
+.ann{border-radius:4px;padding:1px 2px;cursor:pointer;transition:background .15s}
+.ann.ai{background:var(--p-red)}.ann.copy{background:var(--p-yellow)}.ann.logic{background:var(--p-blue)}.ann.code{background:var(--p-purple)}.ann.deep{background:var(--p-green)}
+.ann.thin{background:none;border-bottom:2px dotted var(--purple)}.ann.secret{background:none;box-shadow:inset 0 -2px 0 var(--red)}
+.ann.rejected{background:none!important;border:0!important;box-shadow:none!important;opacity:.55;text-decoration:line-through}
+.ann.edited{outline:1.5px solid var(--ink)}.ann.mine{outline:1.5px dashed var(--ink)}.ann.sel{outline:2px solid var(--ink)}
+.legend{display:flex;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}.legend span{display:inline-flex;align-items:center;gap:5px}.legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+.filters{display:flex;gap:6px;flex-wrap:wrap}.filters button{padding:5px 10px;border-radius:999px;font-size:12.5px;font-weight:600;background:#F1EEFA;color:var(--muted)}.filters button.on{background:var(--ink);color:#fff}
+.file-tabs{display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap}.file-tabs button{padding:6px 12px;border-radius:8px;font-family:ui-monospace,monospace;font-size:12.5px;background:#F1EEFA;color:var(--muted)}.file-tabs button.on{background:var(--ink);color:#fff}
+.side{display:grid;gap:14px;position:sticky;top:76px;max-height:calc(100vh - 90px);overflow:auto;padding-right:2px}
+.stabs{display:flex;gap:4px;background:#F1EEFA;padding:4px;border-radius:12px;flex-wrap:wrap}.stabs button{flex:1;padding:7px 8px;border-radius:9px;font-weight:700;font-size:13px;color:var(--muted);white-space:nowrap}.stabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(27,29,51,.08)}
+.stab{display:none}.stab.on{display:block}
+/* rubric panel */
+.grp{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
+.grp .gh{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:#FAF8FF;font-weight:700;font-size:13.5px}
+.grp .gh .sub{font-size:14px}
+.chk{display:grid;grid-template-columns:18px 1fr auto;gap:8px;padding:8px 12px;border-top:1px solid #F0EDF8;font-size:13px;align-items:start}
+.chk .auto{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;margin-top:2px}
+.chk .auto.ok{background:var(--p-green);color:#0A7A3E}.chk .auto.no{background:var(--p-red);color:#B3182B}.chk .auto.man{background:#F1EEFA;color:var(--muted)}
+.chk .t{font-weight:600;line-height:1.35}
+.chk .m{font-size:11.5px;color:var(--muted);margin-top:2px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chk .m .how{font-family:ui-monospace,monospace;font-size:11px;background:#F1EEFA;padding:1px 5px;border-radius:4px}
+.chk .sc{display:flex;align-items:center;gap:4px}
+.chk .sc input{width:44px;text-align:right;font:inherit;font-weight:800;font-size:14px;border:1.5px solid var(--line);border-radius:7px;padding:3px 5px;background:#fff}
+.chk .sc .max{font-size:11.5px;color:var(--muted)}
+.chk .flag{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:#B9B5CF;font-size:13px}.chk .flag:hover{background:#F1EEFA;color:var(--ink)}
+.chk .flag.on{color:#8A5B00;background:var(--p-yellow)}
+.chk.low{background:var(--p-yellow)}
+.chk .annref{font-size:11.5px;color:#5E2FB4;font-weight:600}
+.total{display:flex;align-items:baseline;justify-content:space-between;padding:12px 4px 0;border-top:1px solid var(--line);margin-top:4px}.total b{font-size:30px;font-weight:800;letter-spacing:-.02em}
+.brief{font-size:13.5px;line-height:1.5}.brief h4{margin:12px 0 4px;font-size:13.5px}.brief ul{margin:0;padding-left:18px}.brief code{font-family:ui-monospace,monospace;font-size:12px;background:#F1EEFA;padding:1px 5px;border-radius:4px}
+.mini td{padding:7px 8px;font-size:13px}
+.sig{border:1.5px solid var(--p-red);border-radius:12px;padding:12px 14px;display:grid;gap:8px}.sig.off{border-color:var(--line);opacity:.7}
+.conf{height:6px;border-radius:999px;background:#F1EEFA;overflow:hidden}.conf i{display:block;height:100%;background:var(--red)}
+.sig ul{margin:0;padding-left:18px;font-size:13px}.sig .lim{font-size:12px;color:var(--muted);background:#FAF8FF;border-radius:8px;padding:8px 10px}
+.pop{position:absolute;z-index:30;background:#fff;border-radius:12px;box-shadow:0 12px 32px rgba(27,29,51,.16);padding:10px;display:none;width:310px;font-size:13px}.pop.on{display:block}
+.pop .msg{font-weight:600;margin-bottom:8px}.pop .cats{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}.pop .cats button{padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700}
+.pop .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.pop .acts button{padding:6px 10px;border-radius:8px;font-weight:700;font-size:12.5px;background:#F1EEFA}.pop .acts button.ok{background:var(--green)}.pop .acts button.no{background:var(--p-red);color:#B3182B}
+.pop textarea{width:100%;font:inherit;font-size:13px;border:1.5px solid var(--line);border-radius:8px;padding:6px 8px;resize:vertical;min-height:54px}
+.annlist{display:grid;gap:6px;max-height:260px;overflow:auto}
+.annlist .a{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:7px 10px;border-radius:10px;background:#FAF8FF;font-size:13px}.annlist .a i{width:10px;height:10px;border-radius:3px}.annlist .a.rejected{opacity:.5;text-decoration:line-through}.annlist .a .st{font-size:11.5px;color:var(--muted)}
+.summary{border:1.5px solid var(--green);border-radius:12px;padding:14px 16px;display:grid;gap:10px}.summary h4{margin:0;font-size:13px;color:var(--muted);font-weight:600}
+.summary [contenteditable]{outline:none;border-radius:8px;padding:6px 8px;background:#FAF8FF;min-height:24px}.summary [contenteditable]:focus{background:#fff;box-shadow:0 0 0 2px var(--p-blue)}.summary ul{margin:0;padding-left:18px}
+.contract{font-size:12.5px;background:var(--p-green);color:#0A7A3E;border-radius:8px;padding:8px 10px}
+/* student */
+.status{display:flex;align-items:center}.status .s{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}.status .s i{width:26px;height:26px;border-radius:50%;background:#EEEAF8;display:grid;place-items:center;font-style:normal;font-weight:700;font-size:12px}
+.status .s.done{color:var(--ink)}.status .s.done i{background:var(--green)}.status .s.now{color:var(--ink);font-weight:700}.status .s.now i{background:var(--blue);color:#fff}
+.status .l{flex:1;height:2px;background:#EEEAF8;margin:0 10px;min-width:20px}.status .l.done{background:var(--green)}
+.scorebig{display:flex;align-items:baseline;gap:6px}.scorebig b{font-size:56px;font-weight:800;letter-spacing:-.03em;line-height:1}.scorebig span{color:var(--muted)}
+.fb{display:grid;gap:10px}.fb .b{padding:12px 14px;border-radius:12px;background:#FAF8FF}.fb .b h4{margin:0 0 4px;font-size:13px;color:var(--muted);font-weight:600}.fb ul{margin:0;padding-left:18px}
+.faq{display:grid;gap:6px}.faq div{padding:9px 12px;border-radius:10px;background:#FAF8FF;font-size:13.5px}.faq b{display:block;font-size:13px}
+.stmap{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.stmap div{padding:10px 12px;border-radius:12px;background:#FAF8FF;font-size:12px;color:var(--muted)}.stmap div b{display:block;margin-bottom:4px}
+.hwlist{display:grid;gap:8px}.hwlist .hi{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;background:#FAF8FF;cursor:pointer;border:1.5px solid transparent}.hwlist .hi.on{border-color:var(--ink);background:#fff}.hwlist .hi.locked{opacity:.55}.hwlist .hi .small{margin-top:2px}
+.drop{border:2px dashed #C9C3E4;border-radius:12px;padding:16px;text-align:center;color:var(--muted);font-size:13px;background:#FBFAFF;cursor:pointer}.drop:hover{border-color:var(--blue)}
+.pen{background:var(--p-red);color:#B3182B;border-radius:12px;padding:12px 14px;font-size:13.5px}
+.radio{display:grid;gap:6px}.radio label{display:flex;gap:8px;align-items:flex-start;padding:9px 12px;border-radius:10px;background:#FAF8FF;cursor:pointer;font-size:13.5px}.radio label.on{background:#fff;box-shadow:0 0 0 1.5px var(--ink)}
+/* coordinator */
+.inbox{display:grid;gap:10px}.inbox .it{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:12px 14px;border-radius:12px;background:#FAF8FF;border-left:4px solid var(--line)}
+.inbox .it.red{border-left-color:var(--red)}.inbox .it.yellow{border-left-color:var(--yellow)}.inbox .it.blue{border-left-color:var(--blue)}.inbox .it.purple{border-left-color:var(--purple)}.inbox .it .k{font-size:12px;color:var(--muted)}.inbox .it.done{opacity:.5}
+.assign td select{padding:5px 8px;font-size:13px;border-radius:8px}
+.wl{display:grid;gap:8px}
+.wl .r{display:grid;grid-template-columns:110px 1fr 230px;gap:12px;align-items:center;font-size:13.5px}
+.wl .stack{display:flex;height:16px;border-radius:999px;overflow:hidden;background:#EEEAF8;position:relative}
+.wl .stack i{display:block;height:100%}
+.wl .stack b{position:absolute;top:-3px;width:2px;height:22px;background:var(--ink)}
+.wl .lg{font-size:11.5px;color:var(--muted)}
+.cons{display:grid;gap:10px}.cons .r{display:grid;grid-template-columns:130px 1fr 90px;gap:10px;align-items:center;font-size:13.5px}
+.dev{position:relative;height:18px;background:#F1EEFA;border-radius:999px}.dev::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1.5px;background:#C9C3E4}.dev i{position:absolute;top:3px;height:12px;border-radius:999px}
+.sheet{overflow:auto;border:1px solid var(--line);border-radius:10px}
+.sheet table{font-size:12px;min-width:900px}.sheet th,.sheet td{padding:5px 8px;border:1px solid #F0EDF8;white-space:nowrap}.sheet th{background:#FAF8FF;color:var(--ink)}
+.sheet td.n{text-align:center;font-weight:700}.sheet td.g{background:#FAF8FF;font-weight:700}
+.gantt{display:grid;grid-template-columns:170px repeat(9,1fr);gap:3px;font-size:12px;min-width:900px}
+.gantt .lbl{padding:4px 8px;font-weight:700;display:flex;flex-direction:column;justify-content:center;line-height:1.2}.gantt .lbl small{font-weight:500;color:var(--muted);font-size:11px}
+.gantt .wk{padding:4px 2px;text-align:center;color:var(--muted);font-size:11px;font-weight:600}.gantt .wk.now{color:var(--ink);font-weight:800;background:#F1EEFA;border-radius:8px}
+.gantt .lane{position:relative;grid-column:2 / span 9;height:28px;background:#FAF8FF;border-radius:8px}
+.gantt .lane i{position:absolute;top:4px;height:20px;border-radius:6px;font-size:11px;font-weight:700;color:#fff;padding:0 7px;line-height:20px;white-space:nowrap;overflow:hidden;cursor:pointer;background:var(--purple)}
+.gantt .lane i.sub{background:#C9C3E4;color:var(--ink)}.gantt .lane i.over{background:var(--red)}.gantt .lane i.done{background:var(--green);color:var(--ink)}.gantt .lane i.act{background:var(--blue)}
+.gantt .lane .today{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);z-index:1}
+.gantt .cell{padding:5px 3px;border-radius:8px;text-align:center;font-weight:800;font-size:12px;background:#F5F3FB;color:#B9B5CF;line-height:1.15}
+.gantt .cell small{display:block;font-weight:600;font-size:10px;opacity:.85}
+.gantt .cell.ok{background:var(--p-green);color:#0A7A3E}.gantt .cell.warn{background:var(--p-yellow);color:#8A5B00}.gantt .cell.over{background:var(--p-red);color:#B3182B}.gantt .cell.chp{outline:1.5px dashed var(--red);outline-offset:-1.5px}
+.sched td{padding:6px 6px;text-align:center}.sched td:first-child{text-align:left}.sched select{width:60px;padding:3px 4px;font-size:12.5px;border-radius:8px;text-align:center}.sched td.chp{background:var(--p-red)}.sched td.tot{font-weight:800}
+.raci td{font-size:12.5px;padding:7px 8px;vertical-align:top}.raci th{text-align:center}.raci td.cc{text-align:center}
+.raci .r{display:inline-block;padding:2px 7px;border-radius:6px;font-weight:800;font-size:11px}.raci .R{background:var(--p-blue);color:#006FA8}.raci .A{background:var(--p-green);color:#0A7A3E}.raci .C{background:var(--p-yellow);color:#8A5B00}.raci .I{background:#F1EEFA;color:var(--muted)}.raci .S{background:var(--p-purple);color:#5E2FB4}
+.prop{display:grid;gap:8px}.prop .p{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;background:#FAF8FF;font-size:13px;border-left:4px solid var(--purple)}.prop .p .k{font-size:12px;color:var(--muted)}.prop .p.done{opacity:.5}
+/* expert */
+.ver{display:grid;gap:8px}.ver .v{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 12px;border-radius:10px;background:#FAF8FF}
+.heat{display:grid;gap:8px}.heat .h{display:grid;grid-template-columns:180px 1fr 60px;gap:10px;align-items:center;font-size:13.5px}.heat .bar i.bad{background:var(--red)}.heat .bar i.mid{background:var(--yellow)}.heat .bar i.good{background:var(--green)}
+.bl{display:grid;gap:8px}.bl .i{padding:10px 12px;border-radius:10px;background:#FAF8FF;font-size:13.5px;border-left:3px solid var(--yellow)}.bl .i .k{font-size:12px;color:var(--muted)}.bl .i .acts{display:flex;gap:6px;margin-top:6px}
+textarea.prm{width:100%;font-family:"JetBrains Mono",ui-monospace,monospace;font-size:12.5px;line-height:1.5;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;min-height:250px;resize:vertical;background:#FBFAFF;color:var(--ink)}
+textarea.txt{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;min-height:70px;resize:vertical;font-size:13.5px}
+.ph{background:var(--p-purple);color:#5E2FB4;padding:1px 5px;border-radius:4px;font-weight:700;font-family:ui-monospace,monospace;font-size:12px}
+.param{display:grid;grid-template-columns:170px 1fr 64px;gap:10px;align-items:center;font-size:13px;padding:5px 0}.param b{font-weight:700}.param .v{text-align:right;font-weight:800;font-family:ui-monospace,monospace;font-size:12.5px}
+input[type=range]{width:100%;accent-color:var(--blue)}
+.crit{display:grid;grid-template-columns:1fr 62px 130px 100px auto;gap:8px;align-items:center;padding:7px 10px;border-top:1px solid #F0EDF8;font-size:13px}
+.crit.h{color:var(--muted);font-size:12px;border-top:0;background:#FAF8FF;border-radius:8px}
+.crit input[type=text]{padding:5px 8px;font-size:13px;width:100%}
+.crit input[type=number],.crit select{padding:5px 6px;border:1.5px solid var(--line);border-radius:8px;font:inherit;font-size:12.5px;width:100%;background:#fff}
+.hist{display:flex;align-items:flex-end;gap:10px;height:130px;padding:0 6px;border-bottom:1px solid var(--line)}.hist div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;font-size:11.5px;color:var(--muted)}.hist i{display:block;width:100%;border-radius:6px 6px 0 0;background:var(--yellow);min-height:2px}.hist i.z{background:var(--green)}.hist i.neg{background:var(--red)}.hist b{margin-bottom:3px;color:var(--ink);font-size:12px}
+.hx{display:flex;gap:10px;padding:4px 6px 0}.hx span{flex:1;text-align:center;font-size:11.5px;color:var(--muted);font-weight:700}
+.stk{display:grid;gap:5px}.stk .r{display:grid;grid-template-columns:230px 1fr 52px;gap:10px;align-items:center;font-size:12.5px;cursor:pointer;padding:2px 4px;border-radius:8px}.stk .r:hover{background:#FAF8FF}.stk .r.sel{background:#F1EEFA;font-weight:700}.stk .b{display:flex;height:14px;border-radius:999px;overflow:hidden;background:#EEEAF8}.stk .b i{display:block;height:100%}
+.up{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.up .u{padding:10px 8px;border-radius:10px;border:1.5px dashed #C9C3E4;font-size:12px;text-align:center;cursor:pointer;color:var(--muted)}.up .u b{display:block;color:var(--ink);font-size:12.5px}.up .u.has{border-style:solid;border-color:var(--green);background:var(--p-green)}
+.pol{display:grid;gap:6px}.pol .p{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:8px 10px;border-radius:10px;background:#FAF8FF;font-size:13px;align-items:center}.pol .p.on{box-shadow:0 0 0 1.5px var(--ink);background:#fff}
+.hwpick{display:grid;gap:6px}.hwpick .h{padding:9px 12px;border-radius:10px;background:#FAF8FF;cursor:pointer;font-size:13.5px;display:flex;justify-content:space-between;gap:8px;align-items:center}.hwpick .h.on{background:#fff;box-shadow:0 0 0 1.5px var(--ink)}.hwpick .h small{color:var(--muted)}
+/* admin */
+.eco{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+.eco .e{padding:14px 16px;border-radius:12px;background:#FAF8FF;cursor:pointer;border:1.5px solid transparent}.eco .e:hover{border-color:var(--blue)}.eco .e b{display:block;font-size:15px;margin-bottom:4px}.eco .e span{font-size:12.5px;color:var(--muted)}
+.lvl{display:grid;gap:12px}.lvl .r{display:grid;grid-template-columns:120px 1fr 1fr 1fr;gap:12px;align-items:center;padding:12px 14px;border-radius:12px;background:#FAF8FF}.lvl .r.h{background:none;color:var(--muted);font-size:12.5px;padding:0 14px}.lvl .r b.big{font-size:22px}
+/* analytics */
+.met{display:grid;gap:8px}.met .m{display:grid;grid-template-columns:190px 120px 1.3fr 1fr 1fr;gap:12px;padding:11px 14px;border-radius:12px;background:#FAF8FF;font-size:12.5px;align-items:start}.met .m.h{background:none;color:var(--muted);font-size:12px;padding:0 14px}.met .m .v{font-size:20px;font-weight:800;letter-spacing:-.02em;line-height:1.1}.met .m .v small{display:block;font-size:11.5px;color:var(--muted);font-weight:600}.met .m .n{font-weight:700}.met .m .n small{display:block;font-weight:500;color:var(--muted)}
+.funnel{display:grid;gap:6px}.funnel .f{display:grid;grid-template-columns:210px 1fr 70px;gap:10px;align-items:center;font-size:13px}.funnel .f .bar{height:14px}.funnel .f .bar i{background:var(--purple)}.funnel .f.drop .bar i{background:var(--red)}
+.spark{width:100%;height:120px;display:block}
+.lvlsw{display:inline-flex;gap:4px;background:#F1EEFA;padding:4px;border-radius:10px}.lvlsw button{padding:5px 10px;border-radius:7px;font-size:12.5px;font-weight:700;color:var(--muted)}.lvlsw button.on{background:#fff;color:var(--ink)}
+/* notifications */
+.esc{display:flex;align-items:center;gap:6px;margin-bottom:14px;flex-wrap:wrap}.esc .t{padding:7px 12px;border-radius:999px;background:#fff;font-size:12.5px;font-weight:700;border:1.5px solid var(--line);white-space:nowrap}.esc .t.hot{background:var(--p-red);color:#B3182B;border-color:var(--red)}.esc .t.warn{background:var(--p-yellow);color:#8A5B00;border-color:var(--yellow)}.esc .t.now{background:var(--ink);color:#fff;border-color:var(--ink)}.esc .l{flex:1;height:2px;background:var(--line);min-width:10px}
+.ngrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:start}
+.ncol{background:#FAF8FF;border-radius:14px;padding:12px}.ncol h3{margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.ntf{background:#fff;border-radius:14px;padding:10px 12px;margin-bottom:8px;border:1px solid var(--line);font-size:13px;box-shadow:0 2px 6px rgba(27,29,51,.05)}
+.ntf .h{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;font-size:11.5px;color:var(--muted);gap:6px}
+.ntf .ch{display:inline-flex;gap:4px;align-items:center;font-weight:700}.ntf .ch.tg{color:#1E8FD9}.ntf .ch.app{color:#5E2FB4}.ntf .ch.mail{color:#8A5B00}
+.ntf .body{line-height:1.4}
+.ntf .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.ntf .acts span{padding:4px 9px;border-radius:8px;background:#F1EEFA;font-size:12px;font-weight:700;cursor:pointer}.ntf .acts span.pri{background:var(--blue);color:#fff}.ntf .acts span:hover{filter:brightness(.96)}
+.ntf.hot{border-left:4px solid var(--red)}.ntf.warn{border-left:4px solid var(--yellow)}.ntf.ok{border-left:4px solid var(--green)}.ntf.info{border-left:4px solid var(--blue)}
+.ncol .none{font-size:12.5px;color:var(--muted);padding:10px 12px;border-radius:12px;background:none;border:1px dashed #C9C3E4;margin-bottom:8px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--ink);color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;pointer-events:none;transition:.25s;z-index:50;max-width:90vw}.toast.on{opacity:1;transform:translateX(-50%)}
+.hidden{display:none!important}
+.selmenu{position:absolute;z-index:31;display:none;background:var(--ink);color:#fff;border-radius:10px;padding:6px;gap:4px}.selmenu.on{display:flex}.selmenu button{padding:5px 9px;border-radius:7px;font-size:12px;font-weight:700;color:#fff}.selmenu button:hover{background:rgba(255,255,255,.14)}
+@media (max-width:1100px){.ngrid,.stmap{grid-template-columns:1fr 1fr}.eco{grid-template-columns:1fr 1fr 1fr}.met .m{grid-template-columns:1fr 1fr}}
+@media (max-width:1000px){.ws{grid-template-columns:1fr}.side{position:static;max-height:none}.g2,.g3,.g4,.g21,.g12,.g31,.eco{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* --- воздух и вложенность (v4) --- */
+body{line-height:1.5}
+.card{padding:20px 22px}
+.grid{gap:18px}
+.head{margin-bottom:22px}
+.head p{line-height:1.5}
+.small{line-height:1.5}
+.note{padding:11px 14px}
+.hint{padding:18px 20px}
+.hint ul{margin:8px 0 0;padding-left:16px;display:grid;gap:5px}
+.exp{margin-top:10px;max-width:820px}
+.exp>summary{display:inline-flex;align-items:center;gap:7px;cursor:pointer;list-style:none;user-select:none;font-size:12.5px;font-weight:700;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px}
+.exp>summary::-webkit-details-marker{display:none}
+.exp>summary::after{content:"⌄";font-size:13px;line-height:1;position:relative;top:-2px;transition:transform .15s}
+.exp[open]>summary::after{transform:rotate(180deg);top:2px}
+.exp>summary:hover{color:var(--ink)}
+.exp .b{margin-top:10px;padding:12px 16px;background:#fff;border-radius:12px;font-size:13.5px;line-height:1.55;color:var(--muted)}
+.exp .b ul{margin:0;padding-left:18px;display:grid;gap:6px}
+.exp .b p{margin:0 0 8px}
+.exp .b p:last-child{margin-bottom:0}
+</style>
+</head>
+<body>
+
+<div class="top"><div class="top-in">
+  <div class="brand"><span class="logo" title="Avito"><svg viewBox="0 0 410 380" xmlns="http://www.w3.org/2000/svg" aria-label="Avito"><circle cx="122.965" cy="256.711" r="122.56" fill="#04E061"/><circle cx="335.574" cy="289.745" r="74.06" fill="#FF4053"/><circle cx="146.404" cy="72.347" r="45.83" fill="#965EEB"/><circle cx="306.803" cy="100.051" r="99.65" fill="#00AAFF"/></svg></span>Avito Education <small>AI Reviewer · прототип v3</small></div>
+  <div class="roles" id="roles">
+    <button data-s="ledger" class="on">Ревьюер</button>
+    <button data-s="student">Студент</button>
+    <button data-s="org">Координатор <span class="n" id="inboxN">4</span></button>
+    <button data-s="expert">Эксперт <span class="n" id="flagN" style="background:var(--yellow);color:var(--ink);display:none">0</span></button>
+    <button data-s="admin">Админ</button>
+    <span class="sep"></span>
+    <button data-s="analytics">Аналитика</button>
+    <button data-s="notif">Уведомления</button>
+    <button data-s="test">Тест агента</button>
+  </div>
+</div></div>
+
+<div class="demo"><div class="demo-in">
+  <b>Сквозной сценарий</b>
+  <span class="step now" data-s="ledger" data-step="1"><i>1</i>общая ведомость курса</span>
+  <span class="step" data-s="hw" data-step="2"><i>2</i>страница домашки</span>
+  <span class="step" data-s="work" data-step="3"><i>3</i>работа + критерии + бриф</span>
+  <span class="step" data-s="work" data-step="4"><i>4</i>пометки приняты, баллы поправлены</span>
+  <span class="step" data-s="work" data-step="5"><i>5</i>спорный критерий → эксперту</span>
+  <span class="step" data-s="work" data-step="6"><i>6</i>фидбэк собран</span>
+  <span class="step" data-s="work" data-step="7"><i>7</i>подтверждено → ведомость</span>
+  <span class="step" data-s="student" data-step="8"><i>8</i>студент видит результат</span>
+  <span class="step" data-s="org" data-step="9"><i>9</i>выгрузка в формате шаблона</span>
+</div></div>
+
+<div class="page">
+
+<!-- ================= REVIEWER: COURSE LEDGER (main) ================= -->
+<section class="screen on" id="s-ledger">
+  <div class="head">
+    <div>
+      <div class="cs" style="margin-bottom:10px"><span class="csel"><select id="courseSel" onchange="setCourse(this.value)" aria-label="Курс и поток"><option value="go">Go · сентябрь-2026 · группа Б</option><option value="da">Аналитика данных · август-2026 · группа А</option></select></span></div>
+      <h1>Общая ведомость · <span id="ledTitle">Go, сентябрь-2026</span></h1>
+      <p>Студенты по вертикали, домашки по горизонтали, в клетках — баллы и статусы.</p><details class="exp"><summary>как читать экран</summary><div class="b">Над колонками — таймлайн дедлайнов проверки.<br>Клик по названию домашки или дедлайну — страница домашки.<br>Клик по клетке — работа студента.</div></details>
+    </div>
+    <div class="row wrap" id="ledTags"></div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px" id="ledKpi"></div>
+
+  <div class="grid g31" style="margin-bottom:16px">
+    <div class="grid" style="min-width:0">
+      <div class="card" style="padding:16px 18px">
+        <div class="row sp wrap" style="margin-bottom:10px">
+          <h3>Ведомость по студентам</h3>
+          <span class="small muted">точки — дедлайны проверки</span>
+        </div>
+        <div class="strip" id="strip"></div>
+        <div class="leg" style="margin-bottom:12px"><span><i class="c-checked"></i>проверено</span><span><i class="c-draft"></i>черновик</span><span><i class="c-abstain"></i>воздержался</span><span><i class="c-wait"></i>ждёт</span><span><i class="c-late"></i>с опозданием</span><span><i class="c-missing"></i>не сдано</span><span><i class="c-none"></i>срок не вышел</span></div>
+        <div class="mx" id="matrix"></div>
+      </div>
+    </div>
+    <div class="grid" style="align-content:start">
+      <div class="hint"><h3>Сервис уже сделал</h3><div class="small" style="opacity:.92" id="ledHint"></div></div>
+      <div class="card"><h3 style="margin-bottom:4px">Мой график на неделю</h3><div class="small muted" style="margin-bottom:10px">Часы задаёт координатор. Клик по дню — отметить ЧП: план пересчитается, координатор увидит это в инбоксе.</div>
+        <div class="days" id="myDays"></div>
+        <div class="row sp" style="margin-top:10px"><span class="small muted">мощность недели</span><b id="myCap">6 ч</b></div>
+        <div class="row sp"><span class="small muted">нужно по плану</span><b id="myNeed">5,4 ч</b></div>
+        <div class="bar" style="margin-top:8px"><i id="myLoadBar" style="width:90%"></i></div>
+        <div class="small muted" style="margin-top:6px" id="myLoadTxt">план 12 работ ДЗ 1 · ~25 мин/работа</div>
+      </div>
+      <div class="card"><h3 style="margin-bottom:8px">Мой план на неделю</h3>
+        <div class="row" style="gap:12px"><span style="width:70px" class="small">план</span><div class="bar"><i style="width:100%;background:#C9C3E4"></i></div><span class="small muted">12</span></div>
+        <div class="row" style="gap:12px;margin-top:6px"><span style="width:70px" class="small">сделано</span><div class="bar"><i style="width:33%"></i></div><span class="small muted">4</span></div>
+        <div class="row" style="gap:12px;margin-top:6px"><span style="width:70px" class="small">за других</span><div class="bar"><i style="width:17%;background:var(--green)"></i></div><span class="small muted">2</span></div>
+        <div class="small muted" style="margin-top:10px">Не успеваете — попросите перераспределить: сервис сам предложит координатору, кому передать.</div>
+        <button class="btn sm" style="margin-top:8px" onclick="askRebalance()">Попросить перераспределить</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= REVIEWER: HOMEWORK PAGE ================= -->
+<section class="screen" id="s-hw">
+  <div class="head">
+    <div>
+      <div class="row wrap" style="margin-bottom:6px"><button class="btn sm ghost" onclick="go('ledger')">← к общей ведомости</button><span id="hwTags" class="row wrap"></span></div>
+      <h1 id="hwTitle">ДЗ 1 · Boilerplate сервиса и веб-сервер</h1>
+      <p>Все студенты группы по одному заданию: что уже сделал агент и с кого начать.</p><details class="exp"><summary>как читать экран</summary><div class="b">Клик по студенту открывает экран проверки — работа, критерии и бриф в одном окне.</div></details>
+    </div>
+    <div class="row wrap"><button class="btn sm" onclick="hwNav(-1)">‹ предыдущая</button><button class="btn sm" onclick="hwNav(1)">следующая ›</button></div>
+  </div>
+  <div class="grid g4" style="margin-bottom:16px" id="hwKpi"></div>
+  <div class="grid g21">
+    <div class="card">
+      <table>
+        <thead><tr><th>Студент</th><th>Сдано</th><th>Ревью 1</th><th>Ревью 2</th><th>Что заметил агент</th><th></th></tr></thead>
+        <tbody id="ledgerRows"></tbody>
+      </table>
+    </div>
+    <div class="grid" style="align-content:start">
+      <div class="hint"><h3>Сервис уже сделал</h3><div class="small" style="opacity:.92" id="hwHint"></div></div>
+      <div class="card"><h3 style="margin-bottom:8px">Материалы задания</h3>
+        <div class="small" style="display:grid;gap:6px" id="hwMats"></div>
+        <div class="small muted" style="margin-top:10px">Те же файлы открываются во вкладке «Бриф / гайд» на экране проверки.</div>
+      </div>
+      <div class="card"><h3 style="margin-bottom:8px">Порядок проверки, который предлагает сервис</h3>
+        <ol class="small" style="margin:0;padding-left:18px;display:grid;gap:4px" id="hwOrder"></ol>
+        <div class="small muted" style="margin-top:8px">Сначала спорные — они требуют больше внимания, пока голова свежая. Очевидные подтверждаются быстрее.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="s-work">
+  <div class="head">
+    <div>
+      <div class="row wrap" style="margin-bottom:6px"><button class="btn sm ghost" onclick="openHw(1)">← к странице ДЗ 1</button><span class="tag y">спорная работа</span><span class="tag">ДЗ 1 · ревью 1</span><span class="tag">сдано 2 сен, +1 день</span></div>
+      <h1>Артём К. · PR #41</h1>
+      <p>Работа, критерии и бриф в одном окне — вместо четырёх вкладок.</p><details class="exp"><summary>как читать экран</summary><div class="b">Клик по пометке — принять, снять или изменить её.<br>Выделение фрагмента кода мышью — добавить свою.</div></details>
+    </div>
+    <div class="legend"><span><i style="background:var(--p-red)"></i>подозрение на ИИ</span><span><i style="background:var(--p-blue)"></i>логическая ошибка</span><span><i style="background:var(--p-purple)"></i>ошибка в коде</span><span><i style="background:var(--p-green)"></i>сильное место</span><span><i style="border-bottom:2px dotted var(--purple);height:0;border-radius:0"></i>недостаточно раскрыто</span></div>
+  </div>
+
+  <div class="ws">
+    <div class="grid">
+      <div class="card">
+        <div class="row sp wrap" style="margin-bottom:10px">
+          <div class="file-tabs"><button class="on">cmd/main.go</button><button>internal/config/config.go</button><button>internal/handler/ping.go</button><button>.env</button><button>README.md</button></div>
+          <div class="filters" id="filters"><button class="on" data-f="all">все</button><button data-f="red">только сигналы</button><button data-f="g3">только «завершение»</button><button data-f="open">скрыть подтверждённые</button></div>
+        </div>
+<div class="code" id="code"><span class="ln">package main</span><span class="ln"></span><span class="ln">import (</span><span class="ln">	"log"</span><span class="ln">	"net/http"</span><span class="ln">	"os"</span><span class="ln">	"os/signal"</span><span class="ln">	"syscall"</span><span class="ln"></span><span class="ln">	"github.com/go-chi/chi/v5"</span><span class="ln">	"github.com/joho/godotenv"</span><span class="ln">	"service-courier/internal/handler"</span><span class="ln">)</span><span class="ln"></span><span class="ln"><span class="ann ai" data-id="a5">// This function serves as the entry point of the application and</span></span><span class="ln"><span class="ann ai" data-id="a5">// is responsible for initializing and running the HTTP server.</span></span><span class="ln">func main() {</span><span class="ln">	_ = godotenv.Load()</span><span class="ln">	<span class="ann code" data-id="a1">port := "8080"</span></span><span class="ln"></span><span class="ln">	r := chi.NewRouter()</span><span class="ln"><span class="ann deep" data-id="a4">	r.Use(handler.RequestID, handler.Logger)</span></span><span class="ln">	r.Get("/ping", handler.Ping)</span><span class="ln">	<span class="ann logic" data-id="a7">r.Get("/healthcheck", handler.Health)</span></span><span class="ln"></span><span class="ln">	srv := &amp;http.Server{Addr: ":" + port, Handler: r}</span><span class="ln"></span><span class="ln">	go func() {</span><span class="ln">		log.Printf("service-courier started on :%s", port)</span><span class="ln">		if err := srv.ListenAndServe(); err != nil &amp;&amp; err != http.ErrServerClosed {</span><span class="ln">			log.Fatal(err)</span><span class="ln">		}</span><span class="ln">	}()</span><span class="ln"></span><span class="ln">	stop := make(chan os.Signal, 1)</span><span class="ln">	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)</span><span class="ln">	&lt;-stop</span><span class="ln">	<span class="ann logic" data-id="a2">srv.Close()</span></span><span class="ln">	<span class="ann thin" data-id="a3">os.Exit(0)</span></span><span class="ln">}</span><span class="ln"></span><span class="ln">// notify is used by the deploy script</span><span class="ln">func notify() {</span><span class="ln">	hook := <span class="ann secret" data-id="a6">"https://hooks.slack.com/services/T0A7/B0F2/kQ9x3pLm"</span></span><span class="ln">	_, _ = http.Post(hook, "application/json", nil)</span><span class="ln">}</span></div>
+        <div class="row sp wrap" style="margin-top:10px">
+          <div class="small muted">Пометки на других файлах: <span class="ann thin" data-id="a8" style="padding:0 3px">config.go — нет обработки флага --port</span></div>
+          <div class="small muted">8 пометок · показаны все</div>
+        </div>
+      </div>
+
+      <div class="card" id="sumCard">
+        <div class="row sp wrap">
+          <div><h3>Сводка для студента</h3><div class="small muted">Собирается только из подтверждённых пометок — после ваших правок, а не до.</div></div>
+          <button class="btn pri" id="btnSum" onclick="buildSummary()">Собрать саммаризацию</button>
+        </div>
+        <div id="sumBody" class="hidden" style="margin-top:14px"></div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="stabs"><button class="on" data-t="rub">Критерии</button><button data-t="brief">Бриф / гайд</button><button data-t="mini">Ведомость</button></div>
+
+      <div class="stab on" id="t-rub">
+        <div class="card">
+          <div class="row sp" style="margin-bottom:10px"><h3>Разбалловка по рубрике</h3><span class="tag">v2 · ДЗ 1</span></div>
+          <div class="small muted" style="margin-bottom:10px">Те же проверки, что в шаблоне организаторов: группа → проверка → как проверяем → критичность. Балл по каждой проверке проставлен агентом и редактируется. Флажок ⚑ — отметить критерий как неоднозначный или предложить правку.</div>
+          <div id="rubric"></div>
+          <div class="total"><span class="muted">Ревью 1, сумма за ДЗ</span><b><span id="total">9</span> <span class="muted" style="font-size:16px">/ 16</span></b></div>
+          <div id="confirmZone" style="margin-top:12px">
+            <button class="btn ok" style="width:100%;justify-content:center" onclick="confirmAll()">Подтвердить ревью 1 и отправить</button>
+            <div class="small muted" style="margin-top:6px;text-align:center">Баллы уходят в ведомость по проверкам, фидбэк — студенту, запись в аудит</div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3 style="margin-bottom:8px">Пометки <span class="small muted" id="annCount"></span></h3>
+          <div class="annlist" id="annlist"></div>
+          <div class="small muted" style="margin-top:8px">Клавиши 1–5 меняют категорию выбранной пометки</div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3 style="margin-bottom:8px">Сигналы честности</h3>
+          <div class="sig" id="sig">
+            <div class="row sp"><b>Возможное использование генеративного ИИ</b><span class="tag r">уверенность 0,42</span></div>
+            <div class="conf"><i style="width:42%"></i></div>
+            <div class="small" style="font-weight:600">Основания</div>
+            <ul><li>Комментарий в строках 15–16 — шаблон «serves as the entry point… is responsible for…», в других файлах комментариев нет</li><li>История PR: 1 коммит на 214 строк, без промежуточных правок</li><li>Стиль handler/ping.go другой: короткие имена, без комментариев</li></ul>
+            <div class="lim">Ограничения: текстовые признаки ненадёжны для неносителей и коротких фрагментов; сигнал не влияет на балл и не показывается студенту без вашего решения.</div>
+            <div class="small" style="font-weight:600">Вопросы для устной защиты</div>
+            <ul><li>Почему порт не читается из .env, хотя godotenv подключён?</li><li>Чем srv.Close() отличается от srv.Shutdown(ctx)?</li></ul>
+            <div class="row" id="sigActs"><button class="btn sm" onclick="sigDecide('confirm')">Подтвердить сигнал</button><button class="btn sm" onclick="sigDecide('reject')">Отклонить</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stab" id="t-brief">
+        <div class="card brief">
+          <div class="row sp"><h3>ДЗ 1. Boilerplate сервиса, веб-сервер</h3><a class="small" href="#" onclick="toast('Открывается task1.md из репозитория курса');return false">task1.md</a></div>
+          <p class="muted" style="margin:6px 0 0">Подготовить каркас Go-приложения: репозиторий, веб-сервер, окружение, роутер и первые тестовые ручки.</p>
+          <h4>1. Структура проекта</h4><ul><li>Рекомендации golang-standards/project-layout</li><li>Разделить код на <code>cmd/</code>, <code>internal/</code>, <code>pkg/</code></li></ul>
+          <h4>2. Запуск веб-сервера</h4><ul><li>HTTP-сервер стандартным пакетом http</li><li>Параметры из <code>.env</code>, порт — переменная <code>PORT</code></li><li>Переопределение через флаги: <code>go run cmd/main.go --port 3000</code></li></ul>
+          <h4>3. Роутинг</h4><ul><li><code>GET /ping</code> → 200, <code>{"message":"pong"}</code></li><li><code>HEAD /healthcheck</code> → 204 без тела</li></ul>
+          <h4>4. Корректное завершение</h4><ul><li>SIGINT/SIGTERM → завершение через <code>context</code> и <code>signal</code></li><li>В лог (stdout): <code>Shutting down service-courier</code></li></ul>
+          <h4>Гайд ревьюера (от эксперта курса)</h4><ul><li>Порт из флага важнее порта из env — это проверяется тестом</li><li>Close() вместо Shutdown(ctx) — не критикал, но балл за «через context» не ставим</li><li>Роутер любой: stdlib/chi/gin/echo</li></ul>
+          <div class="small muted" style="margin-top:12px">Позиция программы по ИИ: сигнал — повод для вопросов на защите, не для снижения балла.</div>
+        </div>
+      </div>
+
+      <div class="stab" id="t-mini">
+        <div class="card">
+          <h3 style="margin-bottom:8px">Ведомость · ДЗ 1 · моя группа</h3>
+          <table class="mini"><thead><tr><th>Студент</th><th>Р1</th><th>Р2</th><th>Сумма</th></tr></thead><tbody>
+            <tr><td>Игорь М.</td><td>14</td><td>—</td><td><b>14</b></td></tr>
+            <tr><td>Никита В.</td><td>16</td><td>—</td><td><b>16</b></td></tr>
+            <tr><td>Дарья Л.</td><td>15</td><td>—</td><td><b>15</b></td></tr>
+            <tr style="background:var(--p-blue)"><td><b>Артём К.</b></td><td id="miniR1">черновик 9</td><td>—</td><td id="miniSum">—</td></tr>
+            <tr><td class="muted">ещё 8…</td><td></td><td></td><td></td></tr>
+          </tbody></table>
+          <div class="small muted" style="margin-top:8px">Сумма = max(ревью 1, ревью 2) по каждой проверке — та же формула, что в шаблоне.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="pop" id="pop"></div>
+  <div class="selmenu" id="selmenu"></div>
+</section>
+
+<!-- ================= STUDENT ================= -->
+<section class="screen" id="s-student">
+  <div class="head"><div><h1>Кабинет студента · Артём К.</h1><p>На организационные вопросы отвечает статус домашки, а не координатор.</p><details class="exp"><summary>как читать экран</summary><div class="b">80% вопросов в чат курса — где работа, когда результат, какой дедлайн.<br>Слева — все домашки курса: домашка → дедлайн → статус.</div></details></div>
+    <div class="row wrap"><span class="tag">курс Go · сентябрь-2026</span><span class="tag">группа Б</span><span class="tag b">ревьюер: Алиса</span></div></div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="row sp wrap" style="margin-bottom:8px"><h3>Статусы домашки — что студент видит на каждом шаге</h3><span class="small muted">кликните домашку слева, чтобы посмотреть экран в этом статусе</span></div>
+    <div class="stmap">
+      <div><b><span class="tag">запланирована</span></b>Условие и материалы закрыты. Видны только дата публикации, дедлайн и макс. балл.</div>
+      <div><b><span class="tag b">опубликована</span></b>Условие, материалы, дедлайн, правило штрафа и место для загрузки работы.</div>
+      <div><b><span class="tag r">не сдана</span></b>Дедлайн прошёл. Можно дослать: показан штраф; уважительная причина — с документами на решение координатору.</div>
+      <div><b><span class="tag y">ожидает ревьюера</span></b>Сдано в срок. Ревьюер назначается автоматически по нагрузке, срок проверки уже известен.</div>
+      <div><b><span class="tag p">в процессе ревью</span></b>Кто проверяет, до какого срока, что уже сделано. Можно задать вопрос ревьюеру.</div>
+      <div><b><span class="tag g">проверена</span></b>Балл по каждому критерию, обратная связь и пометки на работе. Апелляция по критерию.</div>
+    </div>
+  </div>
+  <div class="grid g12">
+    <div class="card" style="align-self:start"><h3 style="margin-bottom:10px">Мои домашки · Go</h3><div class="hwlist" id="hwList"></div></div>
+    <div id="hwDetail" class="grid" style="min-width:0"></div>
+  </div>
+</section>
+
+<!-- ================= COORDINATOR ================= -->
+<section class="screen" id="s-org">
+  <div class="head">
+    <div><h1>Кабинет координатора · поток Go, сентябрь-2026</h1><p>Координатор владеет потоком: назначения, часы ревьюеров, дедлайны, ЧП.</p><details class="exp"><summary>как читать экран</summary><div class="b">Сервис считает спрос и мощность и предлагает перераспределение.<br>Решение остаётся за координатором.</div></details></div>
+    <div class="row wrap"><button class="btn" onclick="toast('Открыт мастер нового потока: группы, ревьюеры, дедлайны')">Новый поток</button><button class="btn pri" onclick="exportXlsx()">Выгрузить ведомость (.xlsx, формат шаблона)</button></div>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:16px" id="orgKpi"></div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="row sp wrap" style="margin-bottom:10px">
+      <div><h3>Ресурсный план потока · диаграмма Ганта</h3><div class="small muted">Сверху — окна «сдача → дедлайн проверки» по домашкам. Ниже — часы ревьюеров по неделям: нужно / есть. Нужно = работы × оценочное время домашки; есть = график ревьюера минус ЧП.</div></div>
+      <div class="leg"><span><i class="c-checked"></i>≤ 85% мощности</span><span><i class="c-wait"></i>85–100%</span><span><i class="c-missing"></i>перегруз</span><span><i style="outline:1.5px dashed var(--red);outline-offset:-1px;background:#fff"></i>ЧП в неделе</span></div>
+    </div>
+    <div style="overflow:auto"><div class="gantt" id="gantt"></div></div>
+    <div class="small muted" style="margin-top:10px" id="ganttNote"></div>
+  </div>
+
+  <div class="grid g2" style="margin-bottom:16px">
+    <div class="card">
+      <div class="row sp wrap" style="margin-bottom:8px"><h3>График работы ревьюеров · часы в день</h3><span class="small muted">задаёт координатор или админ · ревьюер помечает ЧП у себя</span></div>
+      <table class="sched"><thead><tr><th>Ревьюер</th><th>Пн</th><th>Вт</th><th>Ср</th><th>Чт</th><th>Пт</th><th>Сб</th><th>Вс</th><th>ч/нед</th></tr></thead><tbody id="schedRows"></tbody></table>
+      <div class="row wrap" style="margin-top:10px"><button class="btn sm" onclick="toast('График сохранён: мощность пересчитана в плане и в ведомостях ревьюеров')">Сохранить график</button><button class="btn sm ghost" onclick="toast('Шаблон по умолчанию: эксперт Авито 6 ч/нед, приглашённый 4 ч/нед, новый ревьюер 3 ч/нед (задаёт админ)')">Из шаблона админа</button></div>
+    </div>
+    <div class="card">
+      <div class="row sp wrap" style="margin-bottom:8px"><h3>Оценочное время на проверку домашки</h3><span class="small muted">объём × сложность → минуты на работу · задаёт эксперт, уточняется по факту</span></div>
+      <table><thead><tr><th>ДЗ</th><th>объём</th><th>сложность</th><th>мин / работа</th><th>факт</th><th>работ</th><th>часов</th></tr></thead><tbody id="estRows"></tbody></table>
+      <div class="small muted" style="margin-top:8px">Факт — медиана времени ревьюеров в сервисе. Когда факт расходится с оценкой больше чем на 30%, сервис предлагает эксперту обновить оценку.</div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-bottom:16px">
+    <div class="card">
+      <div class="row sp wrap" style="margin-bottom:8px"><h3>Балансировка · неделя 7–13 сен (ДЗ 2)</h3><span class="tag p">сервис предлагает · координатор решает</span></div>
+      <div class="wl" id="balRows"></div>
+      <details class="exp" style="margin:12px 0 8px"><summary>как считается</summary><div class="b"><ul><li>спрос ревьюера = работы × оценка времени ДЗ</li><li>мощность = график − ЧП − взятое сверх плана</li><li>перегруз или работа без ревьюера → предложение передать: смотрим запас, компетенцию по курсу, историю согласованности</li><li>новый ревьюер — не больше 50% нормы первые две недели</li></ul></div></details>
+      <div class="prop" id="props"></div>
+    </div>
+    <div class="card">
+      <div class="row sp" style="margin-bottom:8px"><h3>Назначения: кто какую домашку и группу проверяет</h3><span class="tag">3 группы · 27 студентов</span></div>
+      <table class="assign">
+        <thead><tr><th>Ревьюер</th><th>Группа</th><th>ДЗ 1</th><th>ДЗ 2</th><th>ДЗ 3</th><th>ч/нед</th></tr></thead>
+        <tbody>
+          <tr><td><b>Алиса</b><div class="small muted">эксперт Авито · Go</div></td><td><select><option>группа Б (12)</option><option>группа А (10)</option><option>группа В (5)</option></select></td><td><select><option>назначена</option><option>снять</option></select></td><td><select><option>назначена</option><option>снять</option></select></td><td><select><option>назначена</option><option>снять</option></select></td><td>6</td></tr>
+          <tr><td><b>Сергей Т.</b><div class="small muted">приглашённый · Go, system design</div></td><td><select><option>группа А (10)</option><option>группа Б (12)</option><option>группа В (5)</option></select></td><td><select><option>назначен</option><option>снять</option></select></td><td><select id="asgS2"><option>не назначен</option><option>назначить</option></select></td><td><select><option>не назначен</option><option>назначить</option></select></td><td>4</td></tr>
+          <tr><td><b>Анна Б.</b><div class="small muted">новый ревьюер · Go</div></td><td><select><option>группа В (5)</option><option>группа А (10)</option><option>группа Б (12)</option></select></td><td><select><option>назначена</option><option>снять</option></select></td><td><select><option>назначена</option><option>снять</option></select></td><td><select><option>назначена</option><option>снять</option></select></td><td>3</td></tr>
+        </tbody>
+      </table>
+      <div class="row wrap" style="margin-top:10px"><button class="btn sm" onclick="toast('Сервис предложил 3 изменения — смотрите блок «Балансировка»')">Сбалансировать автоматически</button><button class="btn sm ghost" onclick="toast('Назначения сохранены · ревьюеры получили уведомление')">Сохранить</button><button class="btn sm ghost" onclick="toast('Открыта история нагрузки за 6 недель: кто помогал, у кого было ЧП')">История нагрузки</button></div>
+      <div class="small muted" style="margin-top:8px">История хранится по неделям. На следующем потоке норма и распределение считаются с её учётом.</div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-bottom:16px">
+    <div class="card"><h3 style="margin-bottom:10px">Исключения дня <span class="small muted">— только отклонения от графика</span></h3>
+      <div class="inbox" id="inbox">
+        <div class="it red"><span class="tag r">просрочка проверки</span><div><b>Сергей Т.</b> — 3 работы ДЗ 1 без действий 72 ч<div class="k">окно до 5 сен · последнее действие 1 сен · отмечено ЧП · студенты уведомлены о новом сроке 7 сен</div></div><button class="btn sm" onclick="resolve(this,'2 работы переданы Алисе, 1 — Анне Б. Студентам ушёл новый срок')">Перераспределить</button></div>
+        <div class="it yellow"><span class="tag y">запрос ревьюера</span><div><b>Алиса</b> просит перераспределить 4 работы ДЗ 1<div class="k">план недели 12, сделано 4 + 2 сверх · предложение: Анна Б. (запас 1,5 ч)</div></div><button class="btn sm" onclick="resolve(this,'Анна Б. получила 4 работы')">Решить</button></div>
+        <div class="it blue"><span class="tag b">просрочка сдачи</span><div><b>Ольга П.</b> сдала ДЗ 1 на 2 дня позже, без уважительной причины<div class="k">штраф по правилу ДЗ 1: −10% → применится к итогу автоматически</div></div><button class="btn sm" onclick="resolve(this,'Отметка и штраф сохранены')">Принять</button></div>
+        <div class="it purple"><span class="tag p">уважительная причина</span><div><b>Тимур Х.</b> не сдал ДЗ 1, приложил справку<div class="k">просрочка 2 дня · при подтверждении штраф не применяется, новый срок сдачи 6 сен</div></div><button class="btn sm" onclick="resolve(this,'Причина подтверждена: срок продлён до 6 сен, штраф снят')">Подтвердить</button></div>
+      </div>
+    </div>
+    <div class="card"><h3 style="margin-bottom:4px">Согласованность ревьюеров</h3>
+      <div class="small muted" style="margin-bottom:12px">Отклонение итога от черновика агента по 8 двойным проверкам. Цель — расхождение до ±1 балла. Ниже расхождение — выше вес ревьюера в балансировке спорных работ.</div>
+      <div class="cons">
+        <div class="r"><span>Алиса</span><div class="dev"><i style="left:50%;width:6%;background:var(--green)"></i></div><span class="small">+0,6</span></div>
+        <div class="r"><span>Сергей Т.</span><div class="dev"><i style="left:32%;width:18%;background:var(--red)"></i></div><span class="small">−2,4 строже</span></div>
+        <div class="r"><span>Анна Б.</span><div class="dev"><i style="left:50%;width:12%;background:var(--yellow)"></i></div><span class="small">+1,3</span></div>
+      </div>
+      <div class="small muted" style="margin-top:10px">Сильнее всего расходится проверка «graceful shutdown через context» — 3 ревьюера отметили её флажком. Ушла эксперту в бэклог v3.</div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-bottom:16px">
+    <div class="card"><div class="row sp wrap" style="margin-bottom:8px"><h3>Распределение ролей: кто что решает</h3><span class="small muted"><span class="raci"><span class="r R">R</span> делает <span class="r A">A</span> утверждает <span class="r C">C</span> согласует <span class="r I">I</span> узнаёт <span class="r S">S</span> сервис предлагает</span></span></div>
+      <table class="raci"><thead><tr><th style="text-align:left">Решение</th><th>Ревьюер</th><th>Координатор</th><th>Эксперт</th><th>Админ</th><th>Сервис</th></tr></thead><tbody>
+        <tr><td>Кто проверяет какую группу и домашку</td><td class="cc"><span class="r I">I</span></td><td class="cc"><span class="r R">R</span></td><td class="cc"><span class="r C">C</span></td><td class="cc"><span class="r A">A</span></td><td class="cc"><span class="r S">S</span></td></tr>
+        <tr><td>Часы ревьюера в неделю (норма и график)</td><td class="cc"><span class="r C">C</span> ЧП</td><td class="cc"><span class="r R">R</span></td><td class="cc"><span class="r I">I</span></td><td class="cc"><span class="r A">A</span> шаблон</td><td class="cc"><span class="r S">S</span></td></tr>
+        <tr><td>Дедлайны сдачи и проверки</td><td class="cc"><span class="r I">I</span></td><td class="cc"><span class="r R">R</span></td><td class="cc"><span class="r C">C</span></td><td class="cc"></td><td class="cc"><span class="r S">S</span> сдвиг при массовой просрочке</td></tr>
+        <tr><td>Оценочное время проверки домашки</td><td class="cc"><span class="r I">I</span></td><td class="cc"><span class="r C">C</span></td><td class="cc"><span class="r R">R</span></td><td class="cc"></td><td class="cc"><span class="r S">S</span> по факту</td></tr>
+        <tr><td>Задание, критерии, эталон, промпт, порог ИИ</td><td class="cc"><span class="r C">C</span> флажки</td><td class="cc"><span class="r I">I</span></td><td class="cc"><span class="r R">R</span></td><td class="cc"></td><td class="cc"><span class="r S">S</span> аналитика правок</td></tr>
+        <tr><td>Балл и фидбэк студенту</td><td class="cc"><span class="r R">R</span> <span class="r A">A</span></td><td class="cc"><span class="r I">I</span></td><td class="cc"></td><td class="cc"></td><td class="cc">черновик</td></tr>
+        <tr><td>Просрочка студента: причина, штраф, продление</td><td class="cc"><span class="r I">I</span></td><td class="cc"><span class="r R">R</span> <span class="r A">A</span></td><td class="cc"></td><td class="cc"></td><td class="cc">считает штраф</td></tr>
+        <tr><td>Перераспределение при ЧП или перегрузе</td><td class="cc"><span class="r I">I</span></td><td class="cc"><span class="r A">A</span></td><td class="cc"></td><td class="cc"><span class="r I">I</span> при эскалации</td><td class="cc"><span class="r S">S</span></td></tr>
+        <tr><td>Апелляция студента по критерию</td><td class="cc"><span class="r C">C</span></td><td class="cc"><span class="r R">R</span> маршрут</td><td class="cc"><span class="r A">A</span></td><td class="cc"></td><td class="cc"></td></tr>
+        <tr><td>Правила уведомлений, SLA, контур модели</td><td class="cc"><span class="r I">I</span></td><td class="cc"><span class="r C">C</span></td><td class="cc"><span class="r C">C</span></td><td class="cc"><span class="r R">R</span> <span class="r A">A</span></td><td class="cc"></td></tr>
+      </tbody></table>
+    </div>
+    <div class="grid" style="align-content:start">
+      <div class="card"><h3 style="margin-bottom:8px">Правила потока</h3>
+        <div class="grid" style="gap:8px">
+          <div class="row sp note"><span>Штраф за просрочку сдачи</span><b>−10% за каждые 2 дня, макс −50%</b></div>
+          <div class="row sp note"><span>Уважительная причина</span><b>документы → решение координатора ≤ 24 ч</b></div>
+          <div class="row sp note"><span>Окно проверки</span><b>4 дня после дедлайна сдачи</b></div>
+          <div class="row sp note"><span>Эскалация просрочки проверки</span><b>напоминание T−48/−24 ч · координатору при T0 · админу при T+24 ч</b></div>
+          <div class="row sp note"><span>Сдвиг дедлайна</span><b>предлагается, если &gt; 30% потока не сдали</b></div>
+          <div class="row sp note"><span>Позиция по ИИ</span><b>сигнал → вопросы на защите, штраф −2 только по решению ревьюера</b></div>
+        </div>
+        <button class="btn sm" style="margin-top:10px" onclick="toast('Правила потока сохранены · студенты видят их на странице домашки')">Изменить правила</button>
+      </div>
+      <div class="card"><div class="kpi"><b>31 ч</b><span>p90 от сдачи до фидбэка</span></div><div class="small muted" style="margin-top:6px">цель ≤ 48 ч · раньше не измерялось · подробнее во вкладке «Аналитика»</div></div>
+    </div>
+  </div>
+
+  <div class="card"><h3 style="margin-bottom:8px">Предпросмотр выгрузки</h3><div class="small muted" style="margin-bottom:10px">Строки — проверки из рубрики, колонки — ревью 1 / комментарии / ревью 2 / ревью после Q&amp;A / сумма, по студенту. Как в вашем шаблоне.</div>
+    <div class="sheet" id="sheetPrev"></div></div>
+</section>
+
+<!-- ================= EXPERT ================= -->
+<section class="screen" id="s-expert">
+  <div class="head">
+    <div><h1>Кабинет эксперта · задания, критерии и настройка агента</h1><p>Эксперт — автор задания, критериев и эталона. Здесь же настраивается агент.</p><details class="exp"><summary>как читать экран</summary><div class="b">Настройка агента: базовый промпт с плейсхолдерами, параметры модели, критичность ИИ-заимствований.<br>Рубрика версионируется: критерии не меняются посреди курса, правки копятся в бэклог.</div></details></div>
+    <div class="row wrap"><span class="tag">ДЗ 1 · рубрика v2 · опубликована 20 авг</span><span class="tag p">конфиг агента v2.1</span><button class="btn" onclick="toast('Черновик v3 создан из бэклога, применится к потоку ноябрь-2026')">Собрать v3 из бэклога</button></div>
+  </div>
+  <div class="stabs" style="margin-bottom:16px;max-width:900px" id="xtabs"><button class="on" data-t="tasks">Задания и критерии</button><button data-t="agent">Настройка агента</button><button data-t="flags">Предложения ревьюеров</button><button data-t="charts">Аналитика по критериям</button><button data-t="ver">Версии и поток</button></div>
+
+  <div class="stab on" id="x-tasks">
+    <div class="grid" style="grid-template-columns:280px 1fr">
+      <div class="card" style="align-self:start"><div class="row sp" style="margin-bottom:8px"><h3>Задания курса Go</h3><span class="tag">7</span></div>
+        <div class="hwpick" id="xHwList"></div>
+        <button class="btn sm" style="margin-top:10px;width:100%;justify-content:center" onclick="addTask()">+ Добавить задание</button>
+        <div class="small muted" style="margin-top:8px">Новое задание создаётся как «запланировано»: студенты видят только дату публикации и дедлайн.</div>
+      </div>
+      <div class="grid" style="min-width:0" id="xTask"></div>
+    </div>
+  </div>
+
+  <div class="stab" id="x-agent">
+    <div class="grid g2">
+      <div class="grid">
+        <div class="card">
+          <div class="row sp wrap" style="margin-bottom:6px"><h3>Базовый промпт проверки</h3><div class="row"><button class="btn sm ghost" onclick="resetPrompt()">Восстановить базовый</button><button class="btn sm" onclick="toast('Промпт сохранён как конфиг v2.2 · применится к новым прогонам, старые баллы привязаны к v2.1')">Сохранить</button></div></div>
+          <div class="small muted" style="margin-bottom:8px">Плейсхолдеры подставляются при загрузке задания: <span class="ph">{{task}}</span> условие · <span class="ph">{{criteria}}</span> критерии с весами · <span class="ph">{{reference}}</span> эталон и примеры уровней · <span class="ph">{{guide}}</span> гайд ревьюера · <span class="ph">{{ai_policy}}</span> порог ИИ · <span class="ph">{{solution}}</span> работа студента. Текст между ними можно править.</div>
+          <textarea class="prm" id="prompt"></textarea>
+          <div class="row sp wrap" style="margin-top:8px"><span class="small muted">≈ 1 900 токенов без работы · формат ответа: JSON с пометками (фрагмент, категория, критерий, уверенность, дельта балла)</span><button class="btn sm ghost" onclick="previewPrompt()">Предпросмотр подстановки для ДЗ 1</button></div>
+          <div id="promptPrev" class="hidden" style="margin-top:10px"></div>
+        </div>
+        <div class="card">
+          <div class="row sp wrap" style="margin-bottom:6px"><h3>Критичность ИИ-заимствований</h3><span class="tag r">порог: <span id="aiThr">60</span>%</span></div>
+          <div class="small muted" style="margin-bottom:8px">Доля работы, которую агент относит к сгенерированной (по процессным и текстовым признакам). Что происходит на каждом уровне — использует агент в момент ИИ-ревью. Балл ни на одном уровне не снижается автоматически.</div>
+          <input type="range" min="20" max="90" value="60" step="5" oninput="setAiThr(this.value)">
+          <div class="pol" style="margin-top:8px" id="aiPol"></div>
+          <div class="row wrap" style="margin-top:10px"><label class="small row" style="gap:6px"><input type="checkbox" checked> показывать студенту основания сигнала после подтверждения ревьюером</label></div>
+          <div class="row wrap" style="margin-top:4px"><label class="small row" style="gap:6px"><input type="checkbox"> разрешить ревьюеру штраф −2 балла по правилу курса</label></div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="row sp wrap" style="margin-bottom:6px"><h3>Параметры модели для оценки</h3><span class="tag">контур РФ · локально</span></div>
+          <div class="param"><b>Каскад</b><select style="padding:5px 8px"><option>лёгкая модель → тяжёлая при уверенности &lt; порога</option><option>только тяжёлая</option><option>только лёгкая</option></select><span class="v"></span></div>
+          <div class="param"><b>Температура</b><input type="range" min="0" max="1" step="0.05" value="0.2" oninput="this.parentNode.querySelector('.v').textContent=this.value"><span class="v">0.2</span></div>
+          <div class="param"><b>top_p</b><input type="range" min="0.1" max="1" step="0.05" value="0.9" oninput="this.parentNode.querySelector('.v').textContent=this.value"><span class="v">0.9</span></div>
+          <div class="param"><b>Макс. токенов ответа</b><input type="range" min="1000" max="8000" step="500" value="4000" oninput="this.parentNode.querySelector('.v').textContent=this.value"><span class="v">4000</span></div>
+          <div class="param"><b>Прогонов на работу</b><input type="range" min="1" max="5" step="1" value="3" oninput="this.parentNode.querySelector('.v').textContent=this.value"><span class="v">3</span></div>
+          <div class="param"><b>Агрегация прогонов</b><select style="padding:5px 8px"><option>медиана балла, пометки — пересечение</option><option>среднее</option><option>худший прогон</option></select><span class="v"></span></div>
+          <div class="param"><b>Порог воздержания</b><input type="range" min="0.3" max="0.9" step="0.05" value="0.6" oninput="this.parentNode.querySelector('.v').textContent=this.value"><span class="v">0.6</span></div>
+          <div class="param"><b>Порог «спорная»</b><input type="range" min="0.3" max="0.9" step="0.05" value="0.6" oninput="this.parentNode.querySelector('.v').textContent=this.value"><span class="v">0.6</span></div>
+          <div class="param"><b>Фильтр секретов и ПДн</b><span class="small">маскировать до отправки в модель</span><span class="v">вкл</span></div>
+          <div class="small muted" style="margin-top:8px">Низкая температура и 3 прогона — ради стабильности: разброс между повторами должен быть ≤ 1 балла (проверено на тесте трёх уровней: ±0,7).</div>
+          <div class="row wrap" style="margin-top:10px"><button class="btn sm" onclick="toast('Параметры сохранены в конфиг v2.2')">Сохранить параметры</button><button class="btn sm ghost" onclick="go('test')">Прогнать тест на 3 уровнях</button></div>
+        </div>
+        <div class="card"><h3 style="margin-bottom:6px">Что агент получает на вход по ДЗ 1</h3>
+          <div class="grid" style="gap:6px">
+            <div class="row sp note"><span>условие task1.md</span><span class="tag g">есть</span></div>
+            <div class="row sp note"><span>критерии v2 · 12 проверок, 5 автотестов</span><span class="tag g">есть</span></div>
+            <div class="row sp note"><span>эталонный ответ</span><span class="tag g">solution_good/ · 4 файла</span></div>
+            <div class="row sp note"><span>примеры уровней: слабое / среднее / хорошее</span><span class="tag g">3 из 3</span></div>
+            <div class="row sp note"><span>гайд ревьюера</span><span class="tag g">есть</span></div>
+            <div class="row sp note"><span>политика ИИ курса</span><span class="tag y">порог 60% · штраф выкл</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stab" id="x-flags">
+    <div class="grid g2">
+      <div class="card"><div class="row sp" style="margin-bottom:8px"><h3>Предложения ревьюеров по критериям</h3><span class="tag y" id="blCount">3</span></div>
+        <div class="small muted" style="margin-bottom:10px">Ревьюер ставит флажок на критерий прямо во время проверки, если видит ошибку в оценивании: неоднозначная формулировка, неприменимость, сбой автотеста. Балл всё равно ставит он; предложение попадает сюда, в бэклог следующей версии.</div>
+        <div class="bl" id="backlog">
+          <div class="i">«graceful shutdown реализован через context» — 3 ревьюера: неясно, ставить ли 0 за Close() без ctx, если сервер останавливается<div class="k">Сергей Т., Анна Б., Алиса · предложение: разбить на «останавливается» 2 и «через context» 2 · доля правок агента по критерию 48%</div><div class="acts"><button class="btn sm" onclick="acceptFlag(this)">Принять в v3</button><button class="btn sm ghost" onclick="rejectFlag(this)">Отклонить с комментарием</button></div></div>
+          <div class="i">«Хорошее качество кода» — 2 ревьюера: субъективно, нет примеров<div class="k">предложение: добавить 3 примера в гайд · доля правок агента 37%</div><div class="acts"><button class="btn sm" onclick="acceptFlag(this)">Принять в v3</button><button class="btn sm ghost" onclick="rejectFlag(this)">Отклонить с комментарием</button></div></div>
+          <div class="i">«HEAD /healthcheck отдаёт нужные коды» — 1 ревьюер: тест ping_test не проверяет HEAD<div class="k">предложение: дописать тест · ошибка в автотесте — правится без смены версии рубрики</div><div class="acts"><button class="btn sm" onclick="acceptFlag(this)">Принять в v3</button><button class="btn sm ghost" onclick="rejectFlag(this)">Отклонить с комментарием</button></div></div>
+        </div>
+      </div>
+      <div class="grid" style="align-content:start">
+        <div class="card"><h3 style="margin-bottom:6px">Как предложение попадает в рубрику</h3>
+          <ol class="small" style="margin:0;padding-left:18px;display:grid;gap:4px"><li>Флажок ревьюера с экрана проверки → бэклог v3 (сразу, с привязкой к работе и версии)</li><li>Сервис прикладывает данные: доля правок агента по критерию, разброс между ревьюерами</li><li>Эксперт принимает или отклоняет; принятые собираются в черновик v3</li><li>v3 применяется к следующему потоку; баллы текущего остаются на v2</li></ol></div>
+        <div class="card"><h3 style="margin-bottom:6px">Что говорит поток по ДЗ 1</h3><div class="small">Флаги и graceful через context проваливает больше половины — сигнал для лекции, а не для смягчения критерия. Секреты в коде — 3 работы, найдены автоматически до отправки в модель.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stab" id="x-charts">
+    <div class="grid g2">
+      <div class="card">
+        <div class="row sp wrap" style="margin-bottom:6px"><h3>Правил ли ревьюер решение агента · ДЗ 1, 27 работ</h3><select id="chHw" onchange="renderCharts()" style="padding:5px 8px;font-size:13px"><option value="1">ДЗ 1 · Boilerplate</option><option value="0">ДЗ 0 · Окружение</option></select></div>
+        <div class="small muted" style="margin-bottom:10px">По каждому критерию: доля решений агента, которые ревьюер подтвердил без правок (зелёный) и с правками (жёлтый). Клик по критерию — распределение отличий справа. Нужно, чтобы понимать, где агент надёжен, а где критерий сформулирован плохо.</div>
+        <div class="stk" id="stk"></div>
+        <div class="row sp wrap" style="margin-top:10px" id="stkSum"></div>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="row sp wrap" style="margin-bottom:6px"><h3>Отличие итогового балла от балла агента</h3><span class="tag" id="histTitle"></span></div>
+          <div class="small muted" style="margin-bottom:10px">Только работы, где ревьюер вносил правки. Δ = балл ревьюера − балл агента. Сдвиг влево — агент мягче, вправо — строже. Симметричный разброс — критерий неоднозначен.</div>
+          <div class="hist" id="hist"></div><div class="hx" id="hx"></div>
+          <div class="small" style="margin-top:10px" id="histNote"></div>
+        </div>
+        <div class="card"><h3 style="margin-bottom:6px">Что с этим делать</h3>
+          <div class="grid" style="gap:6px" class="small">
+            <div class="note"><b>доля правок &gt; 35%</b> и разброс симметричный → критерий в бэклог: формулировка или примеры уровней</div>
+            <div class="note"><b>сдвиг в одну сторону</b> → правка промпта или эталона, версия конфига агента</div>
+            <div class="note"><b>правок &lt; 10%</b> при автотесте → кандидат на «очевидную» проверку без внимания ревьюера</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stab" id="x-ver">
+    <div class="grid g2">
+      <div class="grid">
+        <div class="card"><h3 style="margin-bottom:8px">Версии рубрики ДЗ 1</h3>
+          <div class="ver">
+            <div class="v"><span class="tag g">v2</span><div>текущая · 12 проверок · 5 автотестов · макс 16<div class="small muted">опубликована 20 авг, поток сентябрь-2026 · конфиг агента v2.1</div></div><span class="small muted">активна</span></div>
+            <div class="v"><span class="tag">v1</span><div>10 проверок · 3 автотеста · макс 15<div class="small muted">поток май-2026</div></div><span class="small muted">архив</span></div>
+            <div class="v" style="border:1.5px dashed var(--line);background:none"><span class="tag y">v3</span><div>черновик из бэклога<div class="small muted">применится к потоку ноябрь-2026</div></div><span class="small muted">draft</span></div>
+          </div>
+          <div class="small muted" style="margin-top:10px">Каждый балл в ведомости привязан к версии рубрики и версии конфига агента — потоки сравниваются корректно.</div>
+        </div>
+        <div class="card"><h3 style="margin-bottom:6px">Что показать на разборе (Q&amp;A)</h3><ul style="margin:0;padding-left:18px;display:grid;gap:6px" class="small"><li>Разница srv.Close() и srv.Shutdown(ctx) — 16 из 27 работ</li><li>Приоритет флага над env — 17 из 27</li><li>Секреты в коде — 3 работы, найдены автоматически до отправки в модель</li></ul>
+          <div class="small muted" style="margin-top:8px">После разбора колонка «Ревью после Q&amp;A» открывается для дозаполнения.</div></div>
+      </div>
+      <div class="grid">
+        <div class="card"><h3 style="margin-bottom:4px">Где проседает поток · ДЗ 1</h3><div class="small muted" style="margin-bottom:12px">Доля студентов, прошедших проверку, 27 работ</div>
+          <div class="heat">
+            <div class="h"><span>Структура проекта</span><div class="bar"><i class="good" style="width:89%"></i></div><span class="small">89%</span></div>
+            <div class="h"><span>Порт из .env</span><div class="bar"><i class="mid" style="width:63%"></i></div><span class="small">63%</span></div>
+            <div class="h"><span>Ping / healthcheck</span><div class="bar"><i class="good" style="width:81%"></i></div><span class="small">81%</span></div>
+            <div class="h"><span>Graceful через context</span><div class="bar"><i class="bad" style="width:41%"></i></div><span class="small">41%</span></div>
+            <div class="h"><span>Флаг --port</span><div class="bar"><i class="bad" style="width:37%"></i></div><span class="small">37%</span></div>
+          </div>
+        </div>
+        <div class="card"><h3 style="margin-bottom:6px">Материалы студентов к ДЗ 1</h3><div class="small muted">4 скринкаста, 2 схемы. Для продуктовых программ — распознавание схем и скриншотов (в бэклоге масштабирования).</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ADMIN ================= -->
+<section class="screen" id="s-admin">
+  <div class="head"><div><h1>Админ · вся экосистема в одном окне</h1><p>Главная боль — разрозненность: здесь все кабинеты, курсы и потоки сразу.</p><details class="exp"><summary>как читать экран</summary><div class="b">Админ задаёт значения по умолчанию — часы ревьюеров, SLA, правила эскалации — и переходит в любой кабинет.</div></details></div><div class="row wrap"><span class="tag k">Авито Образование</span><span class="tag">3 курса · 5 потоков</span></div></div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="eco">
+      <div class="e" onclick="go('ledger')"><b>Ревьюеры · 9</b><span>3 курса · 27 работ в проверке · 3 просрочки</span></div>
+      <div class="e" onclick="go('student')"><b>Студенты · 84</b><span>27 сдали ДЗ 1 · 2 не сдали · 4 вопроса</span></div>
+      <div class="e" onclick="go('org')"><b>Координаторы · 2</b><span>4 исключения дня · 3 предложения балансировки</span></div>
+      <div class="e" onclick="go('expert')"><b>Эксперты · 4</b><span>3 правки в бэклоге v3 · конфиг агента v2.1</span></div>
+      <div class="e" onclick="go('analytics')"><b>Аналитика</b><span>цикл p90 31 ч · разброс ±1,4</span></div>
+      <div class="e" onclick="go('notif')"><b>Уведомления</b><span>3 правила эскалации · 2 канала</span></div>
+    </div>
+  </div>
+  <div class="grid g4" style="margin-bottom:16px">
+    <div class="card"><div class="kpi"><b>31 ч</b><span>время цикла «сдал → фидбэк», p90</span></div><div class="small muted" style="margin-top:6px">до сервиса не измерялось</div></div>
+    <div class="card"><div class="kpi"><b>12 мин</b><span>медиана эксперта на работу</span></div><div class="small muted" style="margin-top:6px">baseline: 10–15 мин у опытных с агентом, ~60 у остальных</div></div>
+    <div class="card"><div class="kpi"><b>±1,4</b><span>разброс между ревьюерами, балл</span></div><div class="small muted" style="margin-top:6px">цель ±1 · считаем по двойным проверкам</div></div>
+    <div class="card"><div class="kpi"><b>≈ 490 тыс. ₽</b><span>экономия на поток при 1 000–3 000 ₽ за ДЗ</span></div><div class="small muted" style="margin-top:6px">27 студентов × 12 ДЗ, время на работу −60% · оценка порядка</div></div>
+  </div>
+  <div class="grid g2">
+    <div class="grid">
+      <div class="card"><h3 style="margin-bottom:10px">Курсы и потоки</h3>
+        <table><thead><tr><th>Курс</th><th>Поток</th><th>Канал</th><th>В проверке</th><th>Просрочки</th><th>Мощность / спрос, ч/нед</th></tr></thead><tbody>
+          <tr class="click" onclick="setCourse('go');go('ledger')"><td><b>Go</b></td><td>сентябрь-2026</td><td>GitHub PR</td><td>27 работ · ДЗ 1</td><td><span class="tag r">3</span></td><td>13 / 16,5 <span class="tag r">перегруз</span></td></tr>
+          <tr><td><b>Продуктовый менеджмент</b></td><td>сентябрь-2026</td><td>Stepik + Google Docs</td><td>31 работа · ДЗ 2</td><td><span class="tag g">0</span></td><td>14 / 11</td></tr>
+          <tr class="click" onclick="setCourse('da');go('ledger')"><td><b>Аналитика данных</b></td><td>август-2026</td><td>GitHub + docx/xlsx</td><td>18 работ · ДЗ 3</td><td><span class="tag y">1</span></td><td>8 / 7,5 <span class="tag y">94%</span></td></tr>
+        </tbody></table></div>
+      <div class="card"><h3 style="margin-bottom:10px">Успех пилота · критерии кейсодателя</h3>
+        <div class="grid" style="gap:8px">
+          <div class="row sp note"><span>время: минуты эксперта на работу</span><b>60 → 12</b></div>
+          <div class="row sp note"><span>деньги: стоимость проверки потока</span><b>−55–65%</b></div>
+          <div class="row sp note"><span>цикл: сдал → фидбэк, p90</span><b>≤ 48 ч</b></div>
+          <div class="row sp note"><span>качество: разброс между ревьюерами</span><b>≤ ±1</b></div>
+        </div>
+        <div class="small muted" style="margin-top:10px">Guardrail: черновики, подтверждённые без правок быстрее 60 с — 4 из 27.</div></div>
+    </div>
+    <div class="card" style="align-self:start"><h3 style="margin-bottom:10px">Значения по умолчанию для всех потоков</h3>
+      <div class="grid" style="gap:8px">
+        <div class="row sp note"><span>Норма часов: эксперт Авито / приглашённый / новый</span><b>6 / 4 / 3 ч в неделю</b></div>
+        <div class="row sp note"><span>Новый ревьюер в первые 2 недели</span><b>≤ 50% нормы, только очевидные работы</b></div>
+        <div class="row sp note"><span>SLA цикла «сдал → фидбэк», p90</span><b>48 ч</b></div>
+        <div class="row sp note"><span>Эскалация просрочки проверки</span><b>T−48 · T−24 → координатор при T0 → админ при T+24 ч</b></div>
+        <div class="row sp note"><span>Тихие часы уведомлений</span><b>22:00–08:00, кроме T0</b></div>
+        <div class="row sp note"><span>Контур модели</span><b>локальный, публичные API запрещены</b></div>
+        <div class="row sp note"><span>Бюджет инференса</span><b>≤ 25 тыс. ₽ в месяц на все потоки</b></div>
+      </div>
+      <div class="row wrap" style="margin-top:10px"><button class="btn sm" onclick="toast('Значения сохранены · координаторы могут переопределить их для потока')">Сохранить</button><button class="btn sm ghost" onclick="go('notif')">Правила уведомлений</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ANALYTICS ================= -->
+<section class="screen" id="s-analytics">
+  <div class="head">
+    <div><h1>Аналитика · вшита в процесс, а не собирается руками</h1><p>Каждая метрика привязана к цели пилота и считается самим сервисом.</p><details class="exp"><summary>как читать экран</summary><div class="b">У метрики есть определение, источник события и действие, которое она запускает.<br>Сейчас ни одна из них у кейсодателя не считается — сервис начинает считать с первой работы.</div></details></div>
+    <div class="row wrap"><div class="lvlsw"><button class="on">поток Go · сен-2026</button><button onclick="toast('Уровень: курс — все потоки Go')">курс</button><button onclick="toast('Уровень: все курсы Авито Образования')">все курсы</button></div><span class="tag">данные за 24 авг – 3 сен</span></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="row sp wrap" style="margin-bottom:10px"><h3>1. Цели пилота — четыре метрики кейсодателя</h3><span class="small muted">время · деньги · цикл · качество</span></div>
+    <div class="met">
+      <div class="m h"><span>метрика</span><span>сейчас → цель</span><span>как считаем</span><span>откуда данные</span><span>что запускает</span></div>
+      <div class="m"><span class="n">Время эксперта на работу<small>медиана, мин</small></span><span class="v">12 <small>цель ≤ 15 · было ~60</small></span><span>от открытия работы до «Подтвердить ревью», без пауз &gt; 10 мин</span><span>события open_work, confirm_review</span><span>&gt; 25 мин по домашке → эксперту: пересмотреть оценку времени</span></div>
+      <div class="m"><span class="n">Стоимость проверки потока<small>₽ за поток</small></span><span class="v">−58% <small>цель −55–65%</small></span><span>часы ревьюеров × ставка + инференс (12–24 ₽ за ревью)</span><span>время на работу, конфиг модели</span><span>&gt; бюджета → админу: каскад или лимит прогонов</span></div>
+      <div class="m"><span class="n">Цикл «сдал → фидбэк»<small>p90, часов</small></span><span class="v">31 <small>цель ≤ 48 · раньше не измерялось</small></span><span>от submit до отправки фидбэка, p90 по работам домашки</span><span>submit, feedback_sent</span><span>&gt; 48 ч → координатору: узкое место в ведомости</span></div>
+      <div class="m"><span class="n">Разброс между ревьюерами<small>балл, двойные проверки</small></span><span class="v">±1,4 <small>цель ≤ ±1</small></span><span>|балл А − балл Б| на 8 работах, проверенных двумя ревьюерами</span><span>двойные проверки, версия рубрики</span><span>&gt; ±1 по критерию → эксперту: критерий в бэклог</span></div>
+    </div>
+  </div>
+
+  <div class="grid g2" style="margin-bottom:16px">
+    <div class="card">
+      <div class="row sp wrap" style="margin-bottom:8px"><h3>2. Воронка работ · ДЗ 1, группа Б</h3><span class="small muted">где теряется время</span></div>
+      <div class="funnel">
+        <div class="f"><span>опубликовано</span><div class="bar"><i style="width:100%"></i></div><span class="small">12</span></div>
+        <div class="f"><span>сдано в срок</span><div class="bar"><i style="width:75%"></i></div><span class="small">9</span></div>
+        <div class="f drop"><span>сдано с опозданием / не сдано</span><div class="bar"><i style="width:25%"></i></div><span class="small">2 / 1</span></div>
+        <div class="f"><span>автотесты и черновик агента</span><div class="bar"><i style="width:92%"></i></div><span class="small">11 · &lt; 1 ч</span></div>
+        <div class="f"><span>агент воздержался</span><div class="bar"><i style="width:8%;background:var(--purple)"></i></div><span class="small">1</span></div>
+        <div class="f"><span>подтверждено ревьюером</span><div class="bar"><i style="width:33%;background:var(--green)"></i></div><span class="small">4</span></div>
+        <div class="f"><span>фидбэк доставлен студенту</span><div class="bar"><i style="width:33%;background:var(--green)"></i></div><span class="small">4 · p90 31 ч</span></div>
+        <div class="f"><span>ушло на доработку → ревью 2</span><div class="bar"><i style="width:8%;background:var(--yellow)"></i></div><span class="small">1</span></div>
+      </div>
+      <div class="small muted" style="margin-top:10px">Ожидание — не в агенте (черновик за час), а в очереди ревьюера: 7 работ ждут внимания. Это аргумент для балансировки, а не для ускорения модели.</div>
+    </div>
+    <div class="card">
+      <div class="row sp wrap" style="margin-bottom:8px"><h3>3. Цикл по неделям · p90, часов</h3><span class="small muted">как только измерили — стало видно, куда идёт</span></div>
+      <svg class="spark" id="spark" viewBox="0 0 600 120" preserveAspectRatio="none"></svg>
+      <div class="row sp small muted" style="margin-top:4px"><span>нед 1 · 24 авг</span><span>нед 2</span><span>нед 3 · 7 сен (прогноз)</span></div>
+      <div class="small" style="margin-top:8px">Пунктир — цель 48 ч. Прогноз на неделю ДЗ 2 растёт из-за 10 работ группы А без ревьюера — сервис уже предложил назначение.</div>
+    </div>
+  </div>
+
+  <div class="grid g3" style="margin-bottom:16px">
+    <div class="card"><h3 style="margin-bottom:8px">4. Нагрузка и мощность</h3>
+      <div class="grid" style="gap:6px">
+        <div class="row sp note"><span>загрузка ревьюеров, неделя</span><b>13 / 16,5 ч · 79%</b></div>
+        <div class="row sp note"><span>работы без ревьюера</span><b style="color:#B3182B">10 · ДЗ 2, группа А</b></div>
+        <div class="row sp note"><span>просрочки проверки &gt; 24 ч</span><b>3 · одна причина: ЧП</b></div>
+        <div class="row sp note"><span>факт vs оценка времени</span><b>ДЗ 1: 12 vs 25 мин</b></div>
+      </div>
+      <div class="small muted" style="margin-top:8px">Действие: оценку ДЗ 1 снизить до 15 мин, освободившееся время отдать на ДЗ 6 (итоговый проект), где спрос втрое выше мощности.</div>
+    </div>
+    <div class="card"><h3 style="margin-bottom:8px">5. Качество агента</h3>
+      <div class="grid" style="gap:6px">
+        <div class="row sp note"><span>решений без правок ревьюера</span><b>86%</b></div>
+        <div class="row sp note"><span>средняя |Δ| при правке</span><b>0,4 балла · сдвиг +0,3 (мягче)</b></div>
+        <div class="row sp note"><span>воздержался</span><b>1 из 12 · нестандартная структура</b></div>
+        <div class="row sp note"><span>сигналов ИИ подтверждено ревьюером</span><b>2 из 3</b></div>
+        <div class="row sp note"><span>проверок закрыто автотестами</span><b>5 из 12</b></div>
+      </div>
+      <div class="small muted" style="margin-top:8px">Действие: критерии с долей правок &gt; 35% («качество кода», «graceful через context») — в бэклог v3, см. кабинет эксперта.</div>
+    </div>
+    <div class="card"><h3 style="margin-bottom:8px">6. Guardrails против штамповки и дрейфа</h3>
+      <div class="grid" style="gap:6px">
+        <div class="row sp note"><span>подтверждено без правок быстрее 60 с</span><b>4 из 27 · норма ≤ 20%</b></div>
+        <div class="row sp note"><span>коридор правок ревьюера</span><b>14% · норма 20–40%</b></div>
+        <div class="row sp note"><span>дрейф балла агента между неделями</span><b>+0,2 · норма ≤ 0,5</b></div>
+        <div class="row sp note"><span>апелляций студентов</span><b>0 из 4 · норма ≤ 5%</b></div>
+      </div>
+      <div class="small muted" style="margin-top:8px">Коридор правок ниже нормы — сигнал проверить, не подтверждают ли ревьюеры черновик не глядя. Пока объясняется автотестами: 5 из 12 проверок агент не может ошибиться.</div>
+    </div>
+  </div>
+
+  <div class="card"><div class="row sp wrap" style="margin-bottom:8px"><h3>7. Что аналитика возвращает в курс</h3><span class="small muted">результаты проверки → материалы, а не только баллы</span></div>
+    <div class="grid g3">
+      <div class="note"><b>Лекция</b><div class="small muted" style="margin-top:4px">Graceful через context и флаг --port проваливают 59–63% — тема для разбора до ДЗ 2, а не смягчение критерия.</div></div>
+      <div class="note"><b>Задание</b><div class="small muted" style="margin-top:4px">Факт времени проверки ДЗ 1 вдвое ниже оценки: задание проще, чем планировалось, или автотесты закрывают больше. Пересмотреть вес.</div></div>
+      <div class="note"><b>Процесс</b><div class="small muted" style="margin-top:4px">1 из 12 студентов не сдал, 2 сдали с опозданием, 80% вопросов — организационные. Статусы в кабинете студента закрывают их без координатора.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= NOTIFICATIONS ================= -->
+<section class="screen" id="s-notif">
+  <div class="head">
+    <div><h1>Уведомления · как выглядят статусы при просрочке дедлайнов</h1><p>Уведомление приходит в канал пользователя и содержит действие, а не только факт.</p><details class="exp"><summary>как читать экран</summary><div class="b">Ревьюер и студент — Telegram.<br>Координатор — Telegram и инбокс сервиса.<br>Админ — дайджест на почту.<br>Тихие часы 22:00–08:00, кроме момента дедлайна.</div></details></div>
+    <div class="row wrap"><button class="btn sm" onclick="toast('Открыты настройки каналов и тихих часов (админ)')">Настроить правила</button></div>
+  </div>
+  <div class="stabs" style="margin-bottom:14px;max-width:1000px" id="ntabs"><button class="on" data-e="student">Студент просрочил сдачу</button><button data-e="reviewer">Ревьюер просрочил проверку</button><button data-e="chp">Ревьюер отметил ЧП</button><button data-e="sla">Срыв SLA потока</button></div>
+  <div class="card" style="margin-bottom:14px"><div class="row sp wrap" style="margin-bottom:8px"><h3 id="ntTitle"></h3><span class="small muted" id="ntSub"></span></div><div class="esc" id="esc"></div><div class="ngrid" id="ngrid"></div></div>
+  <div class="grid g2">
+    <div class="card"><h3 style="margin-bottom:8px">Кто что получает</h3>
+      <table><thead><tr><th>Событие</th><th>Студент</th><th>Ревьюер</th><th>Координатор</th><th>Эксперт</th><th>Админ</th></tr></thead><tbody class="small">
+        <tr><td>Дедлайн сдачи близко / прошёл</td><td>TG: T−24, T0, T+72</td><td>в ведомости</td><td>инбокс при T+48 или &gt; 30% потока</td><td>дайджест недели</td><td>—</td></tr>
+        <tr><td>Дедлайн проверки близко / прошёл</td><td>TG при T0: новый срок</td><td>TG: T−48, T−24, T0</td><td>TG + инбокс при T0</td><td>—</td><td>почта при T+24</td></tr>
+        <tr><td>ЧП ревьюера</td><td>TG: новый срок, если затронут</td><td>подтверждение</td><td>TG + инбокс сразу, с предложением</td><td>—</td><td>если нет замены 24 ч</td></tr>
+        <tr><td>Уважительная причина студента</td><td>TG: решение ≤ 24 ч</td><td>—</td><td>инбокс сразу</td><td>—</td><td>—</td></tr>
+        <tr><td>Срыв SLA потока (p90 &gt; 48 ч)</td><td>—</td><td>—</td><td>TG + инбокс</td><td>дайджест</td><td>почта + TG</td></tr>
+        <tr><td>Флажок на критерии</td><td>—</td><td>—</td><td>—</td><td>инбокс, дайджест</td><td>—</td></tr>
+      </tbody></table>
+    </div>
+    <div class="card"><h3 style="margin-bottom:8px">Принципы</h3>
+      <ul class="small" style="margin:0;padding-left:18px;display:grid;gap:6px">
+        <li><b>Одно уведомление — одно действие.</b> Кнопка в сообщении делает то же, что кнопка в сервисе: «Передать», «Дослать», «Применить».</li>
+        <li><b>Студент всегда знает новый срок.</b> При просрочке ревьюера студент получает не «задерживается», а дату.</li>
+        <li><b>Эскалация по времени, не по настроению.</b> T−48 → T−24 → T0 → T+24: координатор узнаёт в момент дедлайна, админ — через сутки, если не решено.</li>
+        <li><b>Сервис сначала предлагает решение,</b> потом уведомляет: в сообщении координатору уже есть, кому передать работы и с каким запасом.</li>
+        <li><b>Нет спама:</b> напоминания склеиваются в одно сообщение на человека в день, кроме T0.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================= TESTING ================= -->
+<section class="screen" id="s-test">
+  <div class="head"><div><h1>Тест агента на трёх уровнях решений</h1><p>Прогон на homework_examples/GO: слабое, среднее и хорошее решение ДЗ 1 по рубрике v2.</p><details class="exp"><summary>параметры прогона</summary><div class="b">3 повтора на каждое решение, каскад лёгкой и тяжёлой модели в защищённом контуре.<br>Параметры — из кабинета эксперта: температура 0,2, 3 прогона, медиана.</div></details></div><div class="row wrap"><span class="tag">Go · ДЗ 1</span><span class="tag">продуктовый фрод</span><span class="tag p">конфиг v2.1</span></div></div>
+  <div class="grid g3" style="margin-bottom:16px">
+    <div class="card"><div class="kpi"><b>6 / 6</b><span>троек: порядок слабое &lt; среднее &lt; хорошее восстановлен</span></div><div class="small muted" style="margin-top:6px">цель ≥ 80%</div></div>
+    <div class="card"><div class="kpi"><b>±0,7</b><span>разброс балла между повторами, из 16</span></div><div class="small muted" style="margin-top:6px">цель ≤ 1</div></div>
+    <div class="card"><div class="kpi"><b>94%</b><span>замечаний с якорем на конкретный фрагмент</span></div><div class="small muted" style="margin-top:6px">цель ≥ 90%</div></div>
+  </div>
+  <div class="card">
+    <div class="lvl">
+      <div class="r h"><span>уровень</span><span>черновик агента</span><span>балл ревьюера</span><span>что заметил агент / что нет</span></div>
+      <div class="r"><span class="tag r">слабое</span><div><b class="big">5</b> <span class="muted small">/ 16 ± 0,5</span></div><div><b class="big">4</b></div><div class="small">Нашёл: сервер не стартует из-за порта, нет graceful, нет .env. Не заметил: README описывает другой порт</div></div>
+      <div class="r"><span class="tag y">среднее</span><div><b class="big">10</b> <span class="muted small">/ 16 ± 1,0</span></div><div><b class="big">9</b></div><div class="small">Нашёл: Close() вместо Shutdown(ctx), нет флага. Воздержался по «качество кода» — решил ревьюер. Завысил структуру на 1</div></div>
+      <div class="r"><span class="tag g">хорошее</span><div><b class="big">15</b> <span class="muted small">/ 16 ± 0,6</span></div><div><b class="big">16</b></div><div class="small">Нашёл: pflag + env, лог при остановке. Не заметил: middleware с request-id как сильное место</div></div>
+    </div>
+    <div class="grid g2" style="margin-top:16px">
+      <div class="note"><h3 style="margin-bottom:4px">Где модель ошибалась</h3><div class="small">Систематически мягче на «качестве кода» (+1 в среднем) и на открытых текстовых заданиях жмётся к середине шкалы. Автотесты из рубрики (слой без модели) не ошибаются вовсе — 5 из 12 проверок ДЗ 1 закрываются ими.</div></div>
+      <div class="note"><h3 style="margin-bottom:4px">Стоимость</h3><div class="small">Одно предварительное ревью в каскаде — 12–24 ₽. Поток 27 студентов × 12 ДЗ ≈ 4–8 тыс. ₽ при экономии порядка 260 часов эксперта.</div></div>
+    </div>
+  </div>
+</section>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- рубрика ДЗ 1 (из шаблона организаторов) ---------- */
+const RUBRIC = [
+  {id:'g1',name:'Структура проекта',max:4,checks:[
+    {id:'c1',t:'Есть cmd/, internal/, pkg/ (или осознанная альтернатива)',how:'project_structure_test.go',crit:true,auto:'ok',max:1,draft:1},
+    {id:'c2',t:'Есть файл go.mod',how:'project_structure_test.go',crit:true,auto:'ok',max:1,draft:1},
+    {id:'c3',t:'Точка входа в cmd/<service>/main.go',how:'вручную',crit:true,auto:'man',max:1,draft:1},
+    {id:'c4',t:'Хорошее качество кода (понятные имена, нет циклических зависимостей)',how:'вручную',crit:false,auto:'man',max:1,draft:1},
+  ]},
+  {id:'g2',name:'Веб-сервер',max:5,checks:[
+    {id:'c5',t:'HTTP-сервер запускается (stdlib/chi/gin/echo)',how:'run_server_test.go',crit:true,auto:'ok',max:1,draft:1},
+    {id:'c6',t:'Порт берётся из конфигурации Env',how:'port_env_test.go',crit:true,auto:'no',max:1,draft:0},
+    {id:'c7',t:'Лог старта уходит в stdout',how:'start_log_test.go',crit:true,auto:'ok',max:1,draft:1},
+    {id:'c8',t:'GET /ping отдаёт нужные коды по ТЗ',how:'ping_test.go',crit:false,auto:'ok',max:1,draft:1},
+    {id:'c9',t:'HEAD /healthcheck отдаёт нужные коды по ТЗ',how:'ping_test.go',crit:false,auto:'no',max:1,draft:0},
+  ]},
+  {id:'g3',name:'Graceful shutdown',max:5,checks:[
+    {id:'c10',t:'После SIGINT/SIGTERM сервер останавливается',how:'graceful_shutdown_test.go',crit:false,auto:'ok',max:2,draft:2},
+    {id:'c11',t:'Graceful shutdown реализован через context',how:'вручную',crit:false,auto:'man',max:2,draft:0,low:true},
+    {id:'c12',t:'При остановке в лог выводится сообщение',how:'вручную',crit:false,auto:'man',max:1,draft:0},
+  ]},
+  {id:'g4',name:'Переопределение флагами',max:2,checks:[
+    {id:'c13',t:'Есть переопределение порта флагом --port',how:'port_env_test.go',crit:true,auto:'no',max:1,draft:0},
+    {id:'c14',t:'При флаге и .env берётся значение из флага',how:'port_env_test.go',crit:false,auto:'no',max:1,draft:0},
+  ]},
+];
+const CATS={ai:'подозрение на ИИ',copy:'заимствование',logic:'логическая ошибка',code:'ошибка в коде',deep:'сильное место',thin:'недостаточно раскрыто',secret:'найден секрет'};
+const CATCOLOR={ai:'var(--p-red)',copy:'var(--p-yellow)',logic:'var(--p-blue)',code:'var(--p-purple)',deep:'var(--p-green)',thin:'#fff',secret:'#fff'};
+const SCORE_CATS=['logic','code','thin'];
+let ANN=[
+  {id:'a1',cat:'code',check:'c6',delta:-1,conf:.93,msg:'Порт захардкожен "8080": godotenv подключён, но PORT из .env не читается. Тест port_env_test упал.',advice:'Читайте os.Getenv("PORT") после godotenv.Load().',where:'main.go:19',status:'proposed',vis:true,src:'agent'},
+  {id:'a2',cat:'logic',check:'c11',delta:-2,conf:.58,msg:'srv.Close() рвёт соединения сразу. По ТЗ — Shutdown(ctx) с таймаутом через context.',advice:'ctx, cancel := context.WithTimeout(…); srv.Shutdown(ctx).',where:'main.go:39',status:'proposed',vis:true,src:'agent'},
+  {id:'a3',cat:'thin',check:'c12',delta:-1,conf:.88,msg:'Нет сообщения «Shutting down service-courier» в лог при остановке.',advice:'Добавьте log.Println перед завершением.',where:'main.go:40',status:'proposed',vis:true,src:'agent'},
+  {id:'a4',cat:'deep',check:null,delta:0,conf:.7,msg:'Middleware с request-id и логированием — выходит за требования ДЗ 1. Кандидат в примеры для гайда.',advice:'',where:'main.go:22',status:'proposed',vis:true,src:'agent'},
+  {id:'a5',cat:'ai',check:null,delta:0,conf:.42,msg:'Шаблонный комментарий, нетипичный для остальных файлов. Не влияет на балл.',advice:'',where:'main.go:15–16',status:'proposed',vis:false,src:'agent'},
+  {id:'a6',cat:'secret',check:null,delta:0,conf:.99,msg:'В коде оставлен webhook-URL с токеном. Замаскирован перед отправкой в модель.',advice:'Отзовите токен и вынесите URL в переменную окружения.',where:'main.go:46',status:'proposed',vis:true,src:'agent'},
+  {id:'a7',cat:'logic',check:'c9',delta:-1,conf:.9,msg:'/healthcheck зарегистрирован как GET, по ТЗ — HEAD с 204 без тела. Тест на HEAD упал.',advice:'r.Head("/healthcheck", …) и w.WriteHeader(204).',where:'main.go:24',status:'proposed',vis:true,src:'agent'},
+  {id:'a8',cat:'thin',check:'c13',delta:-1,conf:.9,msg:'Флаг --port не обрабатывается (config.go). Тест port_env_test: flag и env+flag упали.',advice:'pflag.Int("port", …), приоритет флага над env.',where:'config.go',status:'proposed',vis:true,src:'agent'},
+];
+let manual={}, flags={}, selectedAnn=null, summaryBuilt=false, confirmed=false, sigDecision=null, filter='all', maxStep=1, sideTab='rub';
+const MAXTOTAL=RUBRIC.reduce((t,g)=>t+g.max,0);
+
+/* ---------- даты ---------- */
+const TODAY=new Date(2026,8,3);
+const MON=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+const D=s=>{const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d);};
+const fmt=s=>{const d=typeof s==='string'?D(s):s;return d.getDate()+' '+MON[d.getMonth()];};
+const dd=(a,b)=>Math.round(((typeof b==='string'?D(b):b)-(typeof a==='string'?D(a):a))/864e5);
+const pl=(n,a,b,c)=>{const m=n%10,h=n%100;return n+' '+(h>=11&&h<=14?c:m===1?a:m>=2&&m<=4?b:c);};
+
+/* ---------- курсы, домашки, клетки ---------- */
+const COURSES={
+ go:{id:'go',title:'Go, сентябрь-2026',group:'группа Б · 12 студентов',channel:'GitHub PR',start:'2026-08-24',end:'2026-10-25',
+  hw:[
+   {n:0,name:'Окружение и Git',max:4,pub:'2026-08-24',due:'2026-08-28',rev:'2026-08-31',est:8,vol:'малый',cx:'низкая',desc:'Установить Go 1.22, настроить линтер, создать репозиторий по шаблону и открыть первый PR.',mats:['task0.md','шаблон репозитория','чек-лист окружения']},
+   {n:1,name:'Boilerplate сервиса и веб-сервер',max:16,pub:'2026-08-25',due:'2026-09-01',rev:'2026-09-05',est:25,vol:'средний',cx:'средняя',desc:'Подготовить каркас Go-приложения: репозиторий, веб-сервер, окружение, роутер и первые тестовые ручки.',mats:['task1.md','критерии v2 · 12 проверок','гайд ревьюера','лекция 2 · HTTP в Go']},
+   {n:2,name:'Подключение к базе и миграции',max:20,pub:'2026-09-01',due:'2026-09-08',rev:'2026-09-12',est:35,vol:'средний',cx:'средняя',desc:'Подключить PostgreSQL через pgx, описать миграции (goose или migrate), реализовать репозиторий курьеров и ручки CRUD. Ретрай подключения при старте.',mats:['task2.md','критерии v1 · 14 проверок','docker-compose с Postgres','лекция 3 · работа с БД']},
+   {n:3,name:'Чистая архитектура',max:12,pub:'2026-09-08',due:'2026-09-15',rev:'2026-09-19',est:30,vol:'средний',cx:'высокая',desc:'Разнести код по слоям: transport → usecase → repository. Интерфейсы, DI, unit-тесты usecase.',mats:['task3.md']},
+   {n:4,name:'gRPC и контракты',max:14,pub:'2026-09-15',due:'2026-09-22',rev:'2026-09-26',est:30,vol:'средний',cx:'средняя',desc:'',mats:['task4.md']},
+   {n:5,name:'Кэш и очереди',max:18,pub:'2026-09-22',due:'2026-09-29',rev:'2026-10-03',est:40,vol:'большой',cx:'высокая',desc:'',mats:['task5.md']},
+   {n:6,name:'Итоговый проект',max:30,pub:'2026-09-29',due:'2026-10-13',rev:'2026-10-20',est:70,vol:'большой',cx:'высокая',desc:'',mats:['task6.md']}],
+  students:['Артём К.','Мария С.','Дарья Л.','Никита В.','Ольга П.','Игорь М.','Павел Р.','Светлана Е.','Кирилл Д.','Анна Ж.','Тимур Х.','Елена Ш.'],
+  cells:{
+   0:[{st:'missing',sub:null,note:'не сдано · просрочка 6 дней · уважительная причина не заявлена',tag:'r'},{st:'checked',score:4,sub:'2026-08-27'},{st:'checked',score:4,sub:'2026-08-26'},{st:'checked',score:4,sub:'2026-08-27'},{st:'checked',score:3,sub:'2026-08-28'},{st:'checked',score:4,sub:'2026-08-25'},{st:'checked',score:4,sub:'2026-08-27'},{st:'checked',score:4,sub:'2026-08-26'},{st:'checked',score:3,sub:'2026-08-28'},{st:'checked',score:4,sub:'2026-08-27'},{st:'checked',score:2,sub:'2026-08-30',late:2},{st:'checked',score:4,sub:'2026-08-25'}],
+   1:[
+    {st:'draft',score:9,sub:'2026-09-02',late:1,pr:'PR #41 · 4 файла',note:'<span class="tag y">низкая уверенность по «graceful через context»</span> <span class="tag r">сигнал ИИ 0,42</span>',open:true,order:'спорная: сигнал ИИ и низкая уверенность'},
+    {st:'abstain',sub:'2026-09-01',pr:'PR #38',note:'<span class="tag p">структура проекта нестандартная — нужен человек</span>',order:'агент воздержался'},
+    {st:'draft',score:15,sub:'2026-08-31',pr:'PR #40',note:'<span class="tag g">flag + env через pflag, есть тесты</span>'},
+    {st:'draft',score:16,sub:'2026-08-30',pr:'PR #37',obvious:true,note:'<span class="tag g">все 12 проверок пройдены</span>'},
+    {st:'draft',score:5,sub:'2026-09-03',late:2,pr:'PR #44',obvious:true,note:'<span class="tag b">не запускается сервер: тест run_server упал</span> <span class="tag r">штраф −10%</span>'},
+    {st:'checked',score:14,sub:'2026-08-29',pr:'PR #33',r2:'ждём резабмит',note:'<span class="small muted">2 замечания устранить до 10 сен</span>'},
+    {st:'checked',score:13,sub:'2026-08-30',pr:'PR #35'},
+    {st:'checked',score:15,sub:'2026-08-31',pr:'PR #39'},
+    {st:'draft',score:11,sub:'2026-09-01',pr:'PR #42',note:'<span class="tag b">нет graceful shutdown, порт из env есть</span>',order:'2 пометки логики'},
+    {st:'draft',score:12,sub:'2026-09-01',pr:'PR #43',note:'<span class="tag b">/healthcheck зарегистрирован как GET</span>'},
+    {st:'missing',sub:null,note:'<span class="tag p">не сдано · приложена справка → координатор</span>'},
+    {st:'checked',score:16,sub:'2026-08-28',pr:'PR #34'}],
+   2:[null,null,{st:'draft',score:18,sub:'2026-09-03',pr:'PR #47',note:'<span class="tag g">миграции через goose, ретрай ping</span>'},{st:'wait',sub:'2026-09-03',pr:'PR #48',note:'<span class="small muted">агент обрабатывает · автотесты идут</span>'},null,{st:'draft',score:17,sub:'2026-09-02',pr:'PR #46',note:'<span class="tag b">нет ретрая подключения</span>'},null,null,null,null,null,null],
+  }},
+ da:{id:'da',title:'Аналитика данных, август-2026',group:'группа А · 6 студентов',channel:'GitHub + docx/xlsx',start:'2026-08-03',end:'2026-09-27',
+  hw:[
+   {n:1,name:'Описательная статистика',max:10,pub:'2026-08-03',due:'2026-08-10',rev:'2026-08-14',est:20,vol:'малый',cx:'низкая',mats:['task1.md']},
+   {n:2,name:'A/B-тест: дизайн и мощность',max:15,pub:'2026-08-10',due:'2026-08-20',rev:'2026-08-24',est:35,vol:'средний',cx:'высокая',mats:['task2.md']},
+   {n:3,name:'Когортный анализ',max:12,pub:'2026-08-20',due:'2026-08-31',rev:'2026-09-04',est:30,vol:'средний',cx:'средняя',mats:['task3.md']},
+   {n:4,name:'Итоговый дашборд',max:20,pub:'2026-09-01',due:'2026-09-14',rev:'2026-09-20',est:45,vol:'большой',cx:'высокая',mats:['task4.md']}],
+  students:['Вера О.','Глеб Н.','Лиза Ф.','Максим У.','Полина Ц.','Роман Щ.'],
+  cells:{
+   1:[{st:'checked',score:9,sub:'2026-08-09'},{st:'checked',score:10,sub:'2026-08-10'},{st:'checked',score:7,sub:'2026-08-10'},{st:'checked',score:8,sub:'2026-08-12',late:2},{st:'checked',score:10,sub:'2026-08-08'},{st:'checked',score:6,sub:'2026-08-10'}],
+   2:[{st:'checked',score:13,sub:'2026-08-19'},{st:'checked',score:14,sub:'2026-08-20'},{st:'checked',score:9,sub:'2026-08-20'},{st:'checked',score:11,sub:'2026-08-20'},{st:'checked',score:15,sub:'2026-08-18'},{st:'checked',score:8,sub:'2026-08-22',late:2}],
+   3:[{st:'draft',score:10,sub:'2026-08-30',note:'<span class="tag g">retention по когортам, есть выводы</span>'},{st:'checked',score:12,sub:'2026-08-29'},{st:'draft',score:7,sub:'2026-08-31',note:'<span class="tag b">когорты по неделям, а не по месяцам — расходится с ТЗ</span>'},{st:'abstain',sub:'2026-08-31',note:'<span class="tag p">xlsx без формул — нужен человек</span>'},{st:'checked',score:11,sub:'2026-08-28'},{st:'missing',note:'не сдано · 3 дня'}],
+  }}
+};
+let course=COURSES.go, curHw=1;
+const cellOf=(c,n,i)=>(c.cells[n]||[])[i]||null;
+function hwState(c,h){ // состояние домашки относительно сегодня
+  const cells=c.cells[h.n]||[];const any=c.students.some((s,i)=>cells[i]);
+  const allDone=any&&c.students.every((s,i)=>{const x=cells[i];return !x||x.st==='checked'||x.st==='missing';});
+  const toRev=dd(TODAY,h.rev),toDue=dd(TODAY,h.due);
+  if(allDone&&toDue<=0)return 'done';if(toRev<0)return 'over';if(toRev<=2)return 'soon';if(toDue<=0||D(h.pub)<=TODAY)return 'active';return 'future';
+}
+const stName={done:'проверено',over:'просрочено',soon:'дедлайн близко',active:'идёт',future:'впереди'};
+
+/* ---------- навигация ---------- */
+const ROLE_OF={work:'ledger',hw:'ledger'};
+function go(s){document.querySelectorAll('.screen').forEach(e=>e.classList.toggle('on',e.id==='s-'+s));document.querySelectorAll('#roles button').forEach(b=>b.classList.toggle('on',b.dataset.s===(ROLE_OF[s]||s)));hidePop();window.scrollTo({top:0});}
+document.querySelectorAll('#roles button').forEach(b=>b.onclick=()=>go(b.dataset.s));
+document.querySelectorAll('.step').forEach(s=>s.onclick=()=>{if(s.dataset.s==='hw')openHw(1);else go(s.dataset.s);});
+function setStep(n){maxStep=Math.max(maxStep,n);document.querySelectorAll('.step').forEach(s=>{const k=+s.dataset.step;s.classList.toggle('done',k<maxStep);s.classList.toggle('now',k===maxStep);});}
+document.querySelectorAll('.stabs#xtabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#xtabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('#s-expert .stab').forEach(x=>x.classList.toggle('on',x.id==='x-'+b.dataset.t));});
+document.querySelectorAll('#s-work .stabs button').forEach(b=>b.onclick=()=>{sideTab=b.dataset.t;document.querySelectorAll('#s-work .stabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('#s-work .stab').forEach(x=>x.classList.toggle('on',x.id==='t-'+sideTab));});
+
+/* ---------- общая ведомость (главное окно ревьюера) ---------- */
+function setCourse(id){course=COURSES[id];document.getElementById('courseSel').value=id;renderLedger();}
+function cellHtml(c,h,i){
+  const x=cellOf(c,h.n,i);const st=hwState(c,h);
+  if(!x){if(st==='future')return '<span class="c-locked">·</span>';if(dd(TODAY,h.due)>=0)return '<span class="c-none">—<small>до '+fmt(h.due)+'</small></span>';return '<span class="c-missing">не сдано</span>';}
+  const cls=x.st==='draft'&&x.late?'c-late':'c-'+x.st;
+  const inner={checked:`${x.score}<small>${x.r2?'→ ревью 2':'проверено'}</small>`,draft:`${x.score}<small>черновик${x.late?' · +'+x.late+' д':''}</small>`,abstain:`?<small>воздержался</small>`,wait:`⏳<small>сдано ${x.sub?fmt(x.sub):''}</small>`,missing:`✕<small>не сдано</small>`}[x.st];
+  const click=(c.id==='go'&&h.n===1&&i===0)?`openWork()`:`openHw(${h.n})`;
+  return `<span class="${cls}" onclick="${click}" title="${c.students[i]} · ДЗ ${h.n}">${inner}</span>`;
+}
+function renderLedger(){
+  const c=course;document.getElementById('ledTitle').textContent=c.title;
+  document.getElementById('ledTags').innerHTML=`<span class="tag">ревьюер: Алиса</span><span class="tag">${c.group}</span><span class="tag b">канал: ${c.channel}</span>`;
+  // KPI
+  let toCheck=0,checked=0,overdue=0,disputed=0,mins=0;
+  c.hw.forEach(h=>{const cells=c.cells[h.n]||[];cells.forEach(x=>{if(!x)return;if(x.st==='checked')checked++;if(x.st==='draft'||x.st==='abstain'||x.st==='wait'){toCheck++;mins+=h.est;if(dd(TODAY,h.rev)<0)overdue++;}if(x.st==='abstain'||(x.note||'').includes('низкая уверенность'))disputed++;});});
+  const next=c.hw.filter(h=>dd(TODAY,h.rev)>=0&&['active','soon','over'].includes(hwState(c,h))).sort((a,b)=>D(a.rev)-D(b.rev))[0];
+  document.getElementById('ledKpi').innerHTML=`
+    <div class="card"><div class="kpi"><b>${toCheck}</b><span>работ ждут моей проверки</span></div><div class="small muted" style="margin-top:6px">≈ ${(mins/60).toFixed(1).replace('.',',')} ч по оценкам домашек</div></div>
+    <div class="card"><div class="kpi"><b>${next?fmt(next.rev):'—'}</b><span>ближайший дедлайн проверки${next?' · ДЗ '+next.n:''}</span></div><div class="small muted" style="margin-top:6px">${next?'осталось '+pl(dd(TODAY,next.rev),'день','дня','дней'):'все окна закрыты'}</div></div>
+    <div class="card"><div class="kpi"><b style="color:${overdue?'#B3182B':'inherit'}">${overdue}</b><span>просрочено проверок</span></div><div class="small muted" style="margin-top:6px">${overdue?'координатор уже видит это в инбоксе':'координатор ничего не получал'}</div></div>
+    <div class="card"><div class="kpi"><b>${disputed}</b><span>спорных — с них стоит начать</span></div><div class="small muted" style="margin-top:6px">агент воздержался или уверенность ниже 0,6</div></div>`;
+  // полоса дедлайнов
+  const total=dd(c.start,c.end);const pct=s=>Math.max(0,Math.min(100,dd(c.start,s)/total*100));
+  // слим-полоса: номер ДЗ в точке, дата — только у того, что горит сейчас
+  let strip=`<div class="ax"></div>`;
+  c.hw.forEach(h=>{const st=hwState(c,h);const x=pct(h.rev);
+    const lab=['over','soon','active'].includes(st)?`<b>до ${fmt(h.rev)}</b>`:'';
+    strip+=`<div class="mk ${st}" style="left:${x}%" onclick="openHw(${h.n})" title="ДЗ ${h.n} · ${h.name} — проверить до ${fmt(h.rev)} · ${stName[st]}">${lab}<i>${h.n}</i></div>`;});
+  strip+=`<div class="today" style="left:${pct(TODAY)}%"><span>сегодня</span></div>`;
+  document.getElementById('strip').innerHTML=strip;
+  // матрица
+  const head=c.hw.map(h=>{const st=hwState(c,h);const win=dd(h.pub,h.rev);const subW=dd(h.pub,h.due)/win*100;const now=Math.max(0,Math.min(100,dd(h.pub,TODAY)/win*100));
+    return `<th class="hwh ${st}" onclick="openHw(${h.n})" title="ДЗ ${h.n} · ${h.name} — сдача ${fmt(h.due)}, проверить до ${fmt(h.rev)} (${pl(dd(h.due,h.rev),'день','дня','дней')} на проверку)"><div class="hwn">ДЗ ${h.n} · ${h.max} б</div><div class="hwt">${h.name}</div><div class="dl">до ${fmt(h.rev)}</div><div class="tl ${st}"><i class="sub" style="left:0;width:${subW}%"></i><i class="rev" style="left:${subW}%;width:${100-subW}%"></i>${now>0&&now<100?`<b style="left:${now}%"></b>`:''}</div></th>`;}).join('');
+  const rows=c.students.map((s,i)=>{const sum=c.hw.reduce((t,h)=>{const x=cellOf(c,h.n,i);return t+(x&&x.st==='checked'?x.score:0);},0);const max=c.hw.filter(h=>hwState(c,h)==='done').reduce((t,h)=>t+h.max,0);
+    return `<tr><td class="stn">${s}<small>${c.id==='go'?'группа Б':'группа А'} · ${sum}${max?' / '+max:''}</small></td>${c.hw.map(h=>`<td class="c">${cellHtml(c,h,i)}</td>`).join('')}</tr>`;}).join('');
+  const sum=`<tr class="sum"><td class="stn">проверено / сдано</td>${c.hw.map(h=>{const cells=c.cells[h.n]||[];const ch=cells.filter(x=>x&&x.st==='checked').length,sb=cells.filter(x=>x&&x.st!=='missing').length;return `<td class="c">${sb?ch+' / '+sb:'—'}</td>`;}).join('')}</tr>`;
+  document.getElementById('matrix').innerHTML=`<table><thead><tr><th class="stn">Студент · сумма</th>${head}</tr></thead><tbody>${rows}${sum}</tbody></table>`;
+  const hintGo=['принято 27 работ · ДЗ 1 и 3 работы · ДЗ 2','автотесты рубрики прогнаны, найдено 3 секрета','по каждой работе есть пометки и черновик оценки','ждут вас: 7 работ · не сдал: 1 студент'];
+  const hintDa=['принято 5 работ · ДЗ 3 (docx + xlsx)','формулы разобраны, выводы по когортам размечены','ждут вас: 2 черновика и 1 воздержание'];
+  document.getElementById('ledHint').innerHTML='<ul><li>'+(c.id==='go'?hintGo:hintDa).join('</li><li>')+'</li></ul>';
+  renderDays();
+}
+
+/* ---------- мой график и ЧП ---------- */
+const MYHOURS=[1,1,1,1,1,1,0];let myChp={};const DAYN=['пн','вт','ср','чт','пт','сб','вс'];
+function renderDays(){
+  const box=document.getElementById('myDays');const base=new Date(2026,7,31);
+  box.innerHTML=MYHOURS.map((h,i)=>{const d=new Date(base);d.setDate(d.getDate()+i);const chp=myChp[i];return `<div class="d ${h?'':'off'} ${chp?'chp':''} ${i===2?'today':''}" onclick="toggleChp(${i})" title="${DAYN[i]}, ${d.getDate()} · ${chp?'ЧП':h?h+' ч по графику':'выходной'}"><span>${DAYN[i]} ${d.getDate()}</span><b>${chp?'ЧП':h?h+' ч':'—'}</b></div>`;}).join('');
+  const cap=MYHOURS.reduce((t,h,i)=>t+(myChp[i]?0:h),0);const need=7*25/60;
+  document.getElementById('myCap').textContent=cap+' ч';document.getElementById('myNeed').textContent=need.toFixed(1).replace('.',',')+' ч';
+  const p=cap?need/cap*100:200;const bar=document.getElementById('myLoadBar');bar.style.width=Math.min(100,p)+'%';bar.style.background=p>100?'var(--red)':p>85?'var(--yellow)':'var(--blue)';
+  document.getElementById('myLoadTxt').textContent=p>100?`перегруз ${Math.round(p)}%: сервис предложит координатору передать ${Math.ceil((need-cap)*60/25)} работ`:`загрузка ${Math.round(p)}% · 7 работ ДЗ 1 × 25 мин`;
+}
+function toggleChp(i){if(!MYHOURS[i]&&!myChp[i]){toast('В этот день часов не запланировано');return;}myChp[i]=!myChp[i];renderDays();
+  if(myChp[i]){addInbox('red','ЧП ревьюера',`<b>Алиса</b> отметила ЧП на ${DAYN[i]} · −${MYHOURS[i]} ч из плана недели<div class="k">сервис: перегруз ${Math.round(7*25/60/Math.max(0.1,MYHOURS.reduce((t,h,k)=>t+(myChp[k]?0:h),0))*100)}% → предложить Анне Б. 2 работы ДЗ 1</div>`,'Перераспределено: 2 работы → Анна Б., Алиса и студенты уведомлены');toast('ЧП отмечено. Координатор получил уведомление с предложением, кому передать работы');}
+  else toast('ЧП снято, план недели восстановлен');}
+function askRebalance(){addInbox('yellow','запрос ревьюера',`<b>Алиса</b> просит перераспределить 4 работы ДЗ 1<div class="k">план недели 12, сделано 4 + 2 сверх · предложение сервиса: Анна Б. (запас 1,5 ч)</div>`,'Анна Б. получила 4 работы');toast('Запрос ушёл координатору вместе с предложением сервиса: 4 работы → Анна Б.');}
+function addInbox(color,tag,html,doneMsg){const it=document.createElement('div');it.className='it '+color;const tc={red:'r',yellow:'y',blue:'b',purple:'p'}[color];it.innerHTML=`<span class="tag ${tc}">${tag}</span><div>${html}</div><button class="btn sm" onclick="resolve(this,'${doneMsg.replace(/'/g,'’')}')">Решить</button>`;document.getElementById('inbox').prepend(it);bumpInbox(1);}
+
+/* ---------- страница домашки ---------- */
+function openHw(n){curHw=n;renderHw();go('hw');setStep(2);}
+function hwNav(d){const idx=course.hw.findIndex(h=>h.n===curHw);const nx=course.hw[idx+d];if(nx)openHw(nx.n);else toast('Дальше домашек нет');}
+function openWork(){if(course.id!=='go'){toast('В демо экран проверки открывается для Артёма К., ДЗ 1 курса Go');return;}go('work');setStep(3);}
+function renderHw(){
+  const c=course,h=c.hw.find(x=>x.n===curHw),cells=c.cells[h.n]||[],st=hwState(c,h);
+  document.getElementById('hwTitle').textContent=`ДЗ ${h.n} · ${h.name}`;
+  document.getElementById('hwTags').innerHTML=`<span class="tag">макс ${h.max}</span><span class="tag">сдача до ${fmt(h.due)}</span><span class="tag ${st==='over'?'r':st==='soon'?'y':st==='done'?'g':'b'}">проверить до ${fmt(h.rev)} · ${stName[st]}</span><span class="tag">≈ ${h.est} мин / работа</span><span class="tag">объём ${h.vol} · сложность ${h.cx}</span>`;
+  const sub=cells.filter(x=>x&&x.st!=='missing').length,ch=cells.filter(x=>x&&x.st==='checked').length,wait=cells.filter(x=>x&&['draft','abstain','wait'].includes(x.st)).length,miss=c.students.length-sub;
+  document.getElementById('hwKpi').innerHTML=`
+    <div class="card"><div class="kpi"><b>${ch} / ${c.students.length}</b><span>проверено · дедлайн ${fmt(h.rev)}</span></div><div class="bar" style="margin-top:10px"><i style="width:${ch/c.students.length*100}%"></i></div></div>
+    <div class="card"><div class="kpi"><b>${wait}</b><span>ждут проверки</span></div><div class="small muted" style="margin-top:6px">≈ ${(wait*h.est/60).toFixed(1).replace('.',',')} ч при ${h.est} мин на работу</div></div>
+    <div class="card"><div class="kpi"><b>${miss}</b><span>не сдали${st==='future'?' · срок не вышел':''}</span></div><div class="small muted" style="margin-top:6px">${miss&&st!=='future'?'напоминания ушли студентам, координатор в курсе':'—'}</div></div>
+    <div class="card"><div class="kpi"><b>~12 мин</b><span>ваше среднее на работу</span></div><div class="small muted" style="margin-top:6px">оценка эксперта ${h.est} мин · сервис предложит уточнить</div></div>`;
+  const rows=c.students.map((s,i)=>{const x=cells[i];
+    if(!x){return st==='future'?'':`<tr><td><b>${s}</b></td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td><span class="tag">${dd(TODAY,h.due)>=0?'ещё не сдано · до '+fmt(h.due):'не сдано'}</span></td><td></td></tr>`;}
+    const subTxt=x.sub?fmt(x.sub)+(x.late?` <span class="tag ${x.late>1?'r':'y'}">+${pl(x.late,'день','дня','дней')}</span>`:''):'<span class="tag r">не сдано</span>';
+    const r1={checked:`<b>${x.score}</b> <span class="tag g">проверено</span>`,draft:`<b>${x.score}</b> <span class="muted small">черновик${x.obvious?' · очевидная':''}</span>`,abstain:`<b>—</b> <span class="muted small">агент воздержался</span>`,wait:`<span class="muted small">обрабатывается</span>`,missing:'<span class="muted">—</span>'}[x.st];
+    const canOpen=x.st!=='missing'&&x.st!=='wait';const isDemo=c.id==='go'&&h.n===1&&i===0;
+    return `<tr class="${canOpen?'click':''}" ${canOpen?`onclick="${isDemo?'openWork()':'toast(\'В демо открывается только работа Артёма К. по ДЗ 1\')'}"`:''}><td><b>${s}</b>${x.pr?`<div class="small muted">${x.pr}</div>`:''}</td><td>${subTxt}</td><td ${isDemo?'id="ledgerR1"':''}>${r1}</td><td class="muted">${x.r2||'—'}</td><td>${x.note||''}</td><td>${canOpen&&x.st!=='checked'?`<span class="btn sm ${isDemo?'pri':x.obvious?'ghost':''}">Открыть</span>`:''}</td></tr>`;}).join('');
+  document.getElementById('ledgerRows').innerHTML=rows||`<tr><td colspan="6" class="muted">Домашка ещё не опубликована: публикация ${fmt(h.pub)}, сдача до ${fmt(h.due)}. Студенты видят только эти даты.</td></tr>`;
+  document.getElementById('hwHint').innerHTML=sub?`<ul><li>принято ${pl(sub,'работа','работы','работ')}, автотесты рубрики прогнаны</li><li>по каждой работе есть пометки и черновик оценки</li><li>очевидных: ${cells.filter(x=>x&&x.obvious).length} · спорных: ${cells.filter(x=>x&&(x.st==='abstain'||(x.note||'').includes('низкая'))).length}</li></ul>`:'<ul><li>работ пока нет</li><li>автотесты и черновик появятся в течение часа после сдачи</li></ul>';
+  document.getElementById('hwMats').innerHTML=(h.mats||[]).map(m=>`<div>📄 ${m}</div>`).join('')+`<div>📊 рубрика v2 · оценка времени ${h.est} мин</div>`;
+  const order=c.students.map((s,i)=>({s,x:cells[i]})).filter(o=>o.x&&['draft','abstain'].includes(o.x.st)).sort((a,b)=>(b.x.order?1:0)-(a.x.order?1:0)||(a.x.obvious?1:0)-(b.x.obvious?1:0));
+  document.getElementById('hwOrder').innerHTML=order.map(o=>`<li><b>${o.s}</b> — ${o.x.order||(o.x.obvious?'очевидная, ~5 мин':'черновик готов')}</li>`).join('')||'<li class="muted">очередь пуста</li>';
+}
+</script>
+<script>
+/* ---------- баллы ---------- */
+const allChecks=()=>RUBRIC.flatMap(g=>g.checks);
+function checkScore(c){
+  if(manual[c.id]!==undefined) return manual[c.id];
+  const pen=ANN.filter(a=>a.check===c.id&&SCORE_CATS.includes(a.cat)&&a.status!=='rejected').reduce((s,a)=>s+a.delta,0);
+  const base=ANN.some(a=>a.check===c.id)?c.max+pen:c.draft;
+  return Math.max(0,Math.min(c.max,base));
+}
+const groupScore=g=>g.checks.reduce((t,c)=>t+checkScore(c),0);
+const total=()=>RUBRIC.reduce((t,g)=>t+groupScore(g),0);
+function renderRubric(){
+  const box=document.getElementById('rubric');box.innerHTML='';
+  RUBRIC.forEach(g=>{
+    const d=document.createElement('div');d.className='grp';
+    d.innerHTML=`<div class="gh"><span>${g.name}</span><span class="sub">${groupScore(g)} <span class="muted" style="font-weight:600;font-size:12px">/ ${g.max}</span></span></div>`+
+      g.checks.map(c=>{
+        const anns=ANN.filter(a=>a.check===c.id&&a.status!=='rejected');
+        const autoTxt={ok:'✓',no:'✗',man:'·'}[c.auto];
+        const fl=flags[c.id];
+        return `<div class="chk ${c.low?'low':''}" data-c="${c.id}">
+          <span class="auto ${c.auto}" title="${c.auto==='man'?'проверяется вручную':c.auto==='ok'?'автотест пройден':'автотест не пройден'}">${autoTxt}</span>
+          <div><div class="t">${c.t}</div><div class="m"><span class="how">${c.how}</span><span>${c.crit?'критикал':'не критикал'}</span>${c.low?'<span style="color:#8A5B00;font-weight:700">уверенность 0,58 — проверьте</span>':''}${anns.length?`<span class="annref">${anns.length} пометк${anns.length===1?'а':'и'}</span>`:''}${manual[c.id]!==undefined?'<b>правка ревьюера</b>':''}${fl?`<span class="tag y" style="font-size:11px">⚑ ${fl.kind}</span>`:''}</div></div>
+          <div class="sc"><input type="number" min="0" max="${c.max}" value="${checkScore(c)}" ${confirmed?'disabled':''} data-c="${c.id}"><span class="max">/ ${c.max}</span><button class="flag ${fl?'on':''}" title="Отметить критерий" onclick="flagPop('${c.id}',this)">⚑</button></div></div>`;
+      }).join('');
+    box.appendChild(d);
+  });
+  box.querySelectorAll('input').forEach(i=>i.onchange=()=>{manual[i.dataset.c]=Math.max(0,Math.min(+i.max,+i.value));renderRubric();});
+  document.getElementById('total').textContent=total();
+  document.getElementById('miniR1').textContent=(confirmed?'':'черновик ')+total();
+}
+
+/* ---------- флажок на критерии → эксперту ---------- */
+function flagPop(cid,btn){
+  const c=allChecks().find(x=>x.id===cid);const p=document.getElementById('pop');
+  p.innerHTML=`<div class="msg">⚑ ${c.t}</div><div class="small muted" style="margin-bottom:6px">Что не так с критерием? Уйдёт эксперту в бэклог следующей версии рубрики, текущая v2 не меняется.</div>
+    <div class="cats">${['неоднозначен','не применим к работе','нужен пример в гайде','ошибка в автотесте','ошибка в оценивании агентом'].map(k=>`<button style="background:#F1EEFA" onclick="this.parentNode.querySelectorAll('button').forEach(b=>b.style.background='#F1EEFA');this.style.background='var(--p-yellow)';this.parentNode.dataset.k='${k}'">${k}</button>`).join('')}</div>
+    <textarea id="flagTxt" placeholder="Предложение по формулировке или весу (необязательно)"></textarea>
+    <div class="acts"><button class="ok" onclick="setFlag('${cid}')">Отправить эксперту</button>${flags[cid]?`<button class="no" onclick="delete flags['${cid}'];hidePop();renderRubric();bumpFlags()">Снять флажок</button>`:''}<button onclick="hidePop()">Отмена</button></div>`;
+  placePop(p,btn);p.classList.add('on');
+}
+function setFlag(cid){
+  const k=document.querySelector('#pop .cats').dataset.k||'неоднозначен';const txt=document.getElementById('flagTxt').value.trim();
+  flags[cid]={kind:k,txt};hidePop();renderRubric();bumpFlags();
+  const c=allChecks().find(x=>x.id===cid);
+  const it=document.createElement('div');it.className='i';it.style.borderLeftColor='var(--blue)';
+  it.innerHTML=`«${c.t}» — Алиса: ${k}${txt?'. '+txt:''}<div class="k">только что · с экрана проверки PR #41 · рубрика v2 · доля правок агента по критерию ${EDIT[1][cid]?Math.round(EDIT[1][cid].ed/(EDIT[1][cid].ed+EDIT[1][cid].no)*100):0}%</div><div class="acts"><button class="btn sm" onclick="acceptFlag(this)">Принять в v3</button><button class="btn sm ghost" onclick="rejectFlag(this)">Отклонить с комментарием</button></div>`;
+  document.getElementById('backlog').prepend(it);
+  document.getElementById('blCount').textContent=document.querySelectorAll('#backlog .i').length;
+  setStep(5);toast('Флажок ушёл эксперту в бэклог v3. Балл по проверке всё равно ставите вы');
+}
+function bumpFlags(){const n=Object.keys(flags).length;const el=document.getElementById('flagN');el.textContent=n;el.style.display=n?'':'none';}
+function acceptFlag(b){const i=b.closest('.i');i.style.borderLeftColor='var(--green)';i.querySelector('.acts').innerHTML='<span class="tag g">в черновике v3</span>';toast('Предложение принято в черновик v3');}
+function rejectFlag(b){const t=prompt('Комментарий ревьюерам (увидят в гайде)','Критерий оставляем: Close() без ctx — 0 баллов, это отражено в ТЗ');if(t===null)return;const i=b.closest('.i');i.style.opacity=.55;i.querySelector('.acts').innerHTML='<span class="tag">отклонено · комментарий в гайде</span>';toast('Отклонено, комментарий добавлен в гайд ревьюера');}
+
+/* ---------- пометки ---------- */
+function renderAnn(){
+  const list=document.getElementById('annlist');list.innerHTML='';
+  ANN.forEach(a=>{
+    const d=document.createElement('div');d.className='a '+a.status;
+    const st={proposed:'предложено',accepted:'принято',edited:'изменено',rejected:'снято'}[a.status];
+    d.innerHTML=`<i style="background:${a.cat==='thin'||a.cat==='secret'?'var(--purple)':CATCOLOR[a.cat]}"></i><div><b>${CATS[a.cat]}</b> · ${a.where}${a.check?' · '+chkName(a.check):''}${a.src==='reviewer'?' · <span class="tag">ваша</span>':''}<div class="small muted">${a.msg}</div></div><span class="st">${st}${a.vis?'':' · скрыто'}</span>`;
+    d.onclick=e=>openPop(a.id,e.currentTarget);list.appendChild(d);
+  });
+  const acc=ANN.filter(a=>a.status==='accepted'||a.status==='edited').length;
+  document.getElementById('annCount').textContent=`· ${acc} из ${ANN.length} подтверждено`;
+  document.querySelectorAll('#s-work .ann').forEach(el=>{
+    const a=ANN.find(x=>x.id===el.dataset.id);if(!a)return;
+    el.className='ann '+a.cat+(a.status==='rejected'?' rejected':'')+(a.status==='edited'?' edited':'')+(a.src==='reviewer'?' mine':'')+(selectedAnn===a.id?' sel':'');
+    let show=true;if(filter==='red')show=a.cat==='ai'||a.cat==='copy';if(filter==='g3')show=['c10','c11','c12'].includes(a.check);if(filter==='open')show=a.status==='proposed';
+    el.style.opacity=show?'':'.25';
+  });
+  renderRubric();
+  if(ANN.some(a=>a.status!=='proposed'))setStep(4);
+}
+function chkName(id){const c=allChecks().find(x=>x.id===id);return c?c.t.slice(0,40)+(c.t.length>40?'…':''):'';}
+function placePop(p,anchor){const r=anchor.getBoundingClientRect(),host=document.getElementById('s-work').getBoundingClientRect();p.style.left=Math.max(0,Math.min(r.left-host.left,host.width-330))+'px';p.style.top=(r.bottom-host.top+8)+'px';}
+function openPop(id,anchor){
+  const a=ANN.find(x=>x.id===id);selectedAnn=id;renderAnn();const p=document.getElementById('pop');
+  const cats=Object.keys(CATS).filter(k=>k!=='secret').map(k=>`<button style="background:${CATCOLOR[k]};${k==='thin'?'border:1.5px dashed var(--purple)':''}" onclick="setCat('${id}','${k}')">${CATS[k]}</button>`).join('');
+  const checkSel=`<select onchange="ANN.find(x=>x.id==='${id}').check=this.value||null;renderAnn()" style="width:100%;margin-top:4px;font-size:12.5px"><option value="">без привязки к проверке</option>${allChecks().map(c=>`<option value="${c.id}" ${a.check===c.id?'selected':''}>${c.t}</option>`).join('')}</select>`;
+  p.innerHTML=`<div class="row sp"><span class="tag">${a.where}</span><span class="small muted">уверенность ${a.conf.toFixed(2)}</span></div>
+    <div class="msg" style="margin-top:6px">${a.msg}</div>
+    ${a.check?`<div class="small muted">влияние на балл ${a.delta>0?'+':''}${a.delta}</div>`:'<div class="small muted">не влияет на балл</div>'}${checkSel}
+    <div class="small muted" style="margin-top:6px">сменить категорию</div><div class="cats">${cats}</div>
+    <div class="acts"><button class="ok" onclick="setStatus('${id}','accepted')">Принять</button><button class="no" onclick="setStatus('${id}','rejected')">Снять</button><button onclick="editMsg('${id}')">Переформулировать</button><button onclick="toggleVis('${id}')">${a.vis?'Скрыть от студента':'Показать студенту'}</button></div>`;
+  placePop(p,anchor);p.classList.add('on');
+}
+function hidePop(){const p=document.getElementById('pop');if(p)p.classList.remove('on');selectedAnn=null;}
+function setStatus(id,s){if(confirmed)return;ANN.find(a=>a.id===id).status=s;hidePop();renderAnn();}
+function setCat(id,k){const a=ANN.find(x=>x.id===id);a.cat=k;if(!SCORE_CATS.includes(k))a.delta=0;a.status='edited';hidePop();renderAnn();toast('Категория изменена, балл пересчитан');}
+function toggleVis(id){const a=ANN.find(x=>x.id===id);a.vis=!a.vis;hidePop();renderAnn();}
+function editMsg(id){const a=ANN.find(x=>x.id===id);const t=prompt('Формулировка пометки',a.msg);if(t){a.msg=t;a.status='edited';}hidePop();renderAnn();}
+document.addEventListener('keydown',e=>{if(!selectedAnn)return;const m={'1':'ai','2':'copy','3':'logic','4':'code','5':'deep'};if(m[e.key])setCat(selectedAnn,m[e.key]);});
+document.addEventListener('click',e=>{if(!e.target.closest('.pop,.ann,.annlist .a,.selmenu,.flag'))hidePop();});
+document.querySelectorAll('#s-work .ann').forEach(el=>el.addEventListener('click',e=>{e.stopPropagation();openPop(el.dataset.id,el);}));
+document.querySelectorAll('#filters button').forEach(b=>b.onclick=()=>{filter=b.dataset.f;document.querySelectorAll('#filters button').forEach(x=>x.classList.toggle('on',x===b));renderAnn();});
+
+/* своя пометка выделением */
+const code=document.getElementById('code'),selmenu=document.getElementById('selmenu');
+code.addEventListener('mouseup',()=>{
+  const sel=window.getSelection();if(!sel||sel.isCollapsed||confirmed||!code.contains(sel.anchorNode))return selmenu.classList.remove('on');
+  const range=sel.getRangeAt(0).cloneRange();const r=range.getBoundingClientRect(),host=document.getElementById('s-work').getBoundingClientRect();
+  selmenu.innerHTML='<span class="small" style="padding:5px 6px;opacity:.7">пометить как:</span>'+['logic','code','deep','thin'].map(k=>`<button data-k="${k}">${CATS[k]}</button>`).join('');
+  selmenu.style.left=(r.left-host.left)+'px';selmenu.style.top=(r.top-host.top-44)+'px';selmenu.classList.add('on');
+  selmenu.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    const msg=prompt('Формулировка замечания','Собственное замечание ревьюера')||'Собственное замечание ревьюера';
+    const id='r'+Date.now();const span=document.createElement('span');span.className='ann '+b.dataset.k+' mine';span.dataset.id=id;
+    try{range.surroundContents(span);}catch(err){toast('Выделите фрагмент внутри одной строки');selmenu.classList.remove('on');return;}
+    span.addEventListener('click',e=>{e.stopPropagation();openPop(id,span);});
+    ANN.push({id,cat:b.dataset.k,check:b.dataset.k==='deep'?null:'c4',delta:b.dataset.k==='deep'?0:-1,conf:1,msg,advice:'',where:'main.go (ваша пометка)',status:'accepted',vis:true,src:'reviewer'});
+    sel.removeAllRanges();selmenu.classList.remove('on');renderAnn();toast('Пометка добавлена. Привязку к проверке можно сменить в карточке пометки');
+  });
+});
+
+/* ---------- сигналы ---------- */
+function sigDecide(d){sigDecision=d;const s=document.getElementById('sig');document.getElementById('sigActs').innerHTML=`<span class="tag ${d==='confirm'?'r':'g'}">${d==='confirm'?'сигнал подтверждён · вопросы уйдут студенту':'сигнал отклонён · студент его не увидит'}</span>`;ANN.find(a=>a.id==='a5').status=d==='confirm'?'accepted':'rejected';if(d==='reject')s.classList.add('off');renderAnn();}
+
+/* ---------- саммаризация ---------- */
+const acceptedAnn=()=>ANN.filter(a=>(a.status==='accepted'||a.status==='edited')&&a.vis&&a.cat!=='ai'&&a.cat!=='copy');
+function buildSummary(){
+  const acc=acceptedAnn();if(!acc.length){toast('Сначала подтвердите хотя бы одну пометку');return;}
+  const strong=acc.filter(a=>a.cat==='deep'),weak=acc.filter(a=>a.cat!=='deep'&&a.cat!=='secret'),adv=acc.filter(a=>a.advice);
+  const li=x=>x.map(a=>`<li>${a.msg} <span class="muted small">(${a.where})</span></li>`).join('');
+  document.getElementById('sumBody').innerHTML=`<div class="summary">
+    <div class="contract">Контракт: сборщик получает на вход только список из ${acc.length} подтверждённых пометок, а не работу. В тексте ниже нет ничего, чего нет в пометках.</div>
+    <div><h4>Сильные стороны</h4><div contenteditable>${strong.length?`<ul>${li(strong)}</ul>`:'<span class="muted">Пометок этой категории нет</span>'}</div></div>
+    <div><h4>Что нужно исправить к ревью 2</h4><div contenteditable><ul>${li(weak)}</ul></div></div>
+    <div><h4>Советы</h4><div contenteditable><ul>${adv.map(a=>`<li>${a.advice}</li>`).join('')}</ul></div></div>
+    <div><h4>Общий комментарий</h4><div contenteditable>Каркас собран правильно, сервер запускается и отвечает на /ping. Не хватает работы с конфигурацией (порт из .env и флага) и корректного завершения через context — это ровно те проверки, которые не пройдены. После доработки балл пересчитается по лучшему из двух ревью.</div></div>
+  </div><div class="small muted" style="margin-top:8px">Каждый блок редактируется прямо здесь — правьте тон и формулировки перед отправкой.</div>`;
+  document.getElementById('sumBody').classList.remove('hidden');document.getElementById('btnSum').textContent='Пересобрать';summaryBuilt=true;setStep(6);
+}
+
+/* ---------- подтверждение ---------- */
+function confirmAll(){
+  if(!summaryBuilt){toast('Сначала соберите саммаризацию — студент получит именно её');return;}
+  confirmed=true;renderRubric();
+  document.getElementById('confirmZone').innerHTML=`<div class="tag g" style="width:100%;justify-content:center;padding:10px;white-space:normal;text-align:center">Ревью 1 подтверждено · ${total()} / 16 в ведомости · фидбэк отправлен · аудит: Алиса, ${new Date().toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'})}</div>`;
+  const cell=COURSES.go.cells[1][0];cell.st='checked';cell.score=total();cell.note='<span class="tag g">проверено · сигнал ИИ '+(sigDecision==='confirm'?'подтверждён':'отклонён')+'</span>';cell.open=false;
+  document.getElementById('miniSum').innerHTML=`<b>${total()}</b>`;
+  renderLedger();renderHw();renderSheet();ST[1]='done';stSel=1;renderStudentScreen();setStep(7);toast('Готово. Переключаемся на кабинет студента');setTimeout(()=>go('student'),1400);
+}
+
+/* ---------- кабинет студента ---------- */
+let ST={0:'overdue',1:'review',2:'published',3:'planned',4:'planned',5:'planned',6:'planned'},stSel=1,lateReason=null,q2=false;
+const STN={planned:['запланирована',''],published:['опубликована','b'],overdue:['не сдана','r'],wait:['ожидает ревьюера','y'],review:['в процессе ревью','p'],done:['проверена','g']};
+function selHw(n){stSel=n;renderStudentScreen();}
+function renderStudentScreen(){
+  const c=COURSES.go;
+  document.getElementById('hwList').innerHTML=c.hw.map(h=>{const s=ST[h.n];const [nm,cl]=STN[s];return `<div class="hi ${stSel===h.n?'on':''} ${s==='planned'?'locked':''}" onclick="selHw(${h.n})"><div><b>ДЗ ${h.n} · ${h.name}</b><div class="small muted">${s==='planned'?'публикация '+fmt(h.pub)+' · ':''}сдача до ${fmt(h.due)} · проверка до ${fmt(h.rev)} · макс ${h.max}</div></div><span class="tag ${cl}">${nm}</span></div>`;}).join('');
+  const h=c.hw.find(x=>x.n===stSel),s=ST[stSel],box=document.getElementById('hwDetail');
+  const head=`<div class="card"><div class="row sp wrap"><div><div class="row wrap" style="margin-bottom:4px"><span class="tag ${STN[s][1]}">${STN[s][0]}</span><span class="tag">макс ${h.max}</span><span class="tag">≈ ${h.est<=10?'2 ч':'4–6 ч'} на выполнение</span></div><h2>ДЗ ${h.n} · ${h.name}</h2></div><div class="small muted" style="text-align:right">сдача до <b>${fmt(h.due)} 23:59</b><br>результат до <b>${fmt(h.rev)}</b></div></div></div>`;
+  const rules=`<div class="note small"><b>Правила:</b> штраф за просрочку −10% за каждые 2 дня, максимум −50%. Уважительная причина с документами — штраф не применяется после решения координатора (≤ 24 ч). Ревью 2 после доработки: считается лучший балл по каждой проверке.</div>`;
+  const upload=(late)=>`<div class="card"><h3 style="margin-bottom:6px">Сдать работу</h3><div class="small muted" style="margin-bottom:8px">Канал курса — GitHub. Приложите ссылку на PR; сервис сам заберёт файлы, прогонит автотесты и передаст ревьюеру.</div>
+      <div class="row wrap" style="gap:8px"><input type="url" placeholder="https://github.com/…/pull/…" style="flex:1;min-width:240px" id="prLink"><button class="btn sm ghost" onclick="toast('Файл добавлен к работе')">Приложить файл</button></div>
+      <div class="drop" style="margin-top:8px" onclick="toast('Перетащите docx, xlsx, ipynb или ссылку на Google Docs — для этого курса основной канал GitHub')">или перетащите файлы сюда · docx, xlsx, ipynb, pdf, ссылка на Google Docs</div>
+      <div class="small muted" style="margin:8px 0">Материалы к работе: скринкаст, схема, README — увидит ревьюер.</div>
+      <button class="btn pri" onclick="submitHw(${h.n},${late})">${late?'Дослать работу':'Сдать на проверку'}</button></div>`;
+  let body='';
+  if(s==='planned'){body=head+`<div class="card"><div class="row" style="gap:14px"><span style="font-size:34px">🔒</span><div><b>Условие и материалы откроются ${fmt(h.pub)}.</b><div class="small muted">До публикации видны только даты, максимальный балл и оценка времени. Напоминание придёт в Telegram в день публикации и за сутки до дедлайна.</div></div></div></div>`+rules;}
+  if(s==='published'||s==='overdue'){
+    const late=s==='overdue';const over=late?dd(h.due,TODAY):0;const pen=Math.min(50,Math.ceil(over/2)*10);
+    body=head+(late?`<div class="pen"><b>Дедлайн ${fmt(h.due)} прошёл ${pl(over,'день','дня','дней')} назад.</b> Работу можно дослать. Штраф по правилу ДЗ ${h.n}: −10% за каждые 2 дня — сейчас <b>−${pen}%</b>, максимум −50%. Если причина уважительная, приложите подтверждение — координатор решит в течение суток, штраф до решения не применяется.</div>
+      <div class="card"><h3 style="margin-bottom:8px">Причина просрочки</h3><div class="radio">
+        <label class="${lateReason==='valid'?'on':''}" onclick="lateReason='valid';renderStudentScreen()"><input type="radio" name="lr" ${lateReason==='valid'?'checked':''}><span><b>Уважительная причина</b> — болезнь, командировка, форс-мажор<div class="small muted">приложите документ: справку, письмо работодателя · уйдёт координатору</div></span></label>
+        <label class="${lateReason==='no'?'on':''}" onclick="lateReason='no';renderStudentScreen()"><input type="radio" name="lr" ${lateReason==='no'?'checked':''}><span><b>Без уважительной причины</b> — принимаю штраф −${pen}%<div class="small muted">итоговый балл будет умножен на ${(1-pen/100).toFixed(2).replace('.',',')}</div></span></label></div>
+        ${lateReason==='valid'?`<div class="drop" style="margin-top:8px" onclick="toast('Документ приложен · уйдёт координатору вместе с работой')">приложить подтверждение · pdf, jpg</div>`:''}</div>`:'')+
+      `<div class="card"><h3 style="margin-bottom:6px">Условие</h3><div class="small">${h.desc}</div><div class="small" style="margin-top:8px;display:grid;gap:4px">${h.mats.map(m=>`<div>📄 ${m}</div>`).join('')}</div></div>`+upload(late)+rules;
+  }
+  if(s==='wait'){body=head+`<div class="card"><div class="status"><div class="s done"><i>✓</i>сдано ${fmt(TODAY)} ${h.n===0?'· на рассмотрении координатора':'в срок'}</div><div class="l done"></div><div class="s now"><i>2</i>назначается ревьюер</div><div class="l"></div><div class="s"><i>3</i>ревью 1 · до ${fmt(h.rev)}</div><div class="l"></div><div class="s"><i>4</i>результат</div></div></div>
+    <div class="card"><b>Работа принята.</b> <span class="muted">Автотесты уже идут. Ревьюер назначается автоматически по нагрузке — обычно в течение часа, вы получите уведомление в Telegram. Срок проверки: до ${fmt(h.rev)}.</span>${h.n===0?'<div class="small" style="margin-top:8px"><span class="tag p">уважительная причина на рассмотрении</span> координатор ответит до завтра; штраф пока не применяется</div>':''}</div>
+    <div class="card"><h3 style="margin-bottom:6px">Материалы к работе</h3><div class="small">📎 PR · прикреплён</div><button class="btn sm" style="margin-top:8px" onclick="toast('Материал приложен, ревьюер увидит его в бриф-панели')">Приложить материал</button></div>`+rules;}
+  if(s==='review'){body=head+`<div class="card"><div class="status"><div class="s done"><i>✓</i>сдано 2 сен 23:40 · +1 день</div><div class="l done"></div><div class="s done"><i>✓</i>назначен ревьюер · Алиса</div><div class="l done"></div><div class="s now" id="st3"><i>3</i>ревью 1 · до 5 сен</div><div class="l" id="stl3"></div><div class="s" id="st4"><i>4</i>результат</div><div class="l"></div><div class="s"><i>5</i>ревью 2 после доработки · до 10 сен</div></div></div>
+    <div class="grid g21"><div class="grid">
+      <div class="card"><b>Работа у ревьюера</b><div class="small muted" style="margin-top:8px;display:grid;gap:4px"><div>взята в работу · 3 сен, 10:20</div><div>срок проверки · до 5 сен, осталось 2 дня</div><div>результат появится здесь и в Telegram</div></div><div class="small" style="margin-top:12px"><span class="tag y">штраф −10%</span> за 1 день просрочки сдачи</div></div>
+      <div class="card"><h3 style="margin-bottom:6px">Вопрос ревьюеру</h3><div class="small muted" style="margin-bottom:8px">Содержательный вопрос по работе — ревьюеру, организационный — координатору. Ответ придёт сюда.</div><textarea class="txt" id="qTxt" placeholder="Например: можно ли приложить обновлённый README до ревью?"></textarea><div class="row wrap" style="margin-top:8px"><button class="btn sm" onclick="askQ('ревьюеру')">Спросить ревьюера</button><button class="btn sm ghost" onclick="askQ('координатору')">Спросить координатора</button></div></div>
+    </div><div class="grid" style="align-content:start">
+      <div class="card"><h3 style="margin-bottom:6px">Материалы к работе</h3><div id="mats" class="small" style="display:grid;gap:6px"><div>📎 PR #41 · github.com/…/service-courier</div></div><button class="btn sm" style="margin-top:10px" onclick="addMat()">Приложить материал</button></div>
+      <div class="card"><h3 style="margin-bottom:8px">Частые вопросы — уже с ответами</h3><div class="faq"><div><b>Когда будет результат?</b>Дедлайн ревью 1 — 5 сен. Сейчас работа у Алисы.</div><div><b>Можно доработать?</b>Да, ревью 2 до 10 сен. Считается лучший балл по каждой проверке.</div><div><b>По каким критериям проверяют?</b>Те же 12 проверок из условия — разбалловка появится после ревью.</div></div></div>
+    </div></div>`;}
+  if(s==='done'){body=head+`<div class="card"><div class="status"><div class="s done"><i>✓</i>сдано 2 сен 23:40</div><div class="l done"></div><div class="s done"><i>✓</i>ревьюер · Алиса</div><div class="l done"></div><div class="s done"><i>✓</i>ревью 1 · 3 сен</div><div class="l done"></div><div class="s now"><i>4</i>результат готов</div><div class="l"></div><div class="s"><i>5</i>ревью 2 после доработки · до 10 сен</div></div></div>
+    <div class="grid g21"><div class="grid">
+      <div class="card"><div class="row sp"><div class="scorebig"><b id="stTotal"></b><span>/ 16 · ревью 1</span></div><div class="row wrap"><span class="tag y">штраф −10% → итог ${Math.round(total()*0.9*10)/10}</span><span class="tag g">проверено</span></div></div><div id="stCrit" style="margin-top:12px"></div></div>
+      <div class="card"><h3 style="margin-bottom:10px">Обратная связь ревьюера</h3><div class="fb" id="stFb"></div></div>
+      <div class="card"><h3 style="margin-bottom:6px">Пометки на вашей работе</h3><div class="small muted" style="margin-bottom:10px">Только подтверждённые ревьюером, с привязкой к строке</div><div class="annlist" id="stAnn" style="max-height:none"></div></div>
+    </div><div class="grid" style="align-content:start">
+      <div class="card"><h3 style="margin-bottom:6px">Что дальше</h3><div class="small">Исправьте замечания и обновите PR до 10 сен — ревью 2 подхватит новую версию автоматически. Балл за каждую проверку — лучший из двух ревью.</div><button class="btn sm pri" style="margin-top:10px" onclick="toast('PR помечен «на ревью 2» · ревьюер получит diff с ревью 1')">Отправить на ревью 2</button></div>
+      <div class="card"><h3 style="margin-bottom:6px">Не согласны с баллом?</h3><div class="small muted">Апелляция подаётся по конкретной проверке. Координатор маршрутизирует её эксперту, решение — до 3 дней.</div><button class="btn sm" style="margin-top:10px" onclick="toast('Выберите проверку в разбалловке слева и опишите, с чем не согласны — уйдёт координатору')">Оспорить балл по проверке</button></div>
+    </div></div>`;}
+  box.innerHTML=body;
+  if(s==='done')fillResult();
+}
+function submitHw(n,late){const v=(document.getElementById('prLink')||{}).value;if(late&&!lateReason){toast('Выберите причину просрочки');return;}if(!v){toast('Укажите ссылку на PR или приложите файл');return;}ST[n]='wait';renderStudentScreen();
+  if(late&&lateReason==='valid'){addInbox('purple','уважительная причина',`<b>Артём К.</b> дослал ДЗ ${n} с документом<div class="k">просрочка ${dd(COURSES.go.hw[n].due,TODAY)} дн · при подтверждении штраф не применяется</div>`,'Причина подтверждена, штраф снят');toast('Работа отправлена. Документ ушёл координатору, штраф пока не применяется');}
+  else toast(late?'Работа дослана со штрафом. Ревьюер назначится автоматически':'Работа сдана в срок. Ревьюер назначится автоматически, срок проверки известен');
+  const cell=COURSES.go.cells[n];if(cell){cell[0]={st:'wait',sub:'2026-09-03',late:late?dd(COURSES.go.hw[n].due,TODAY):0,pr:'PR · новый',note:'<span class="small muted">агент обрабатывает</span>'};renderLedger();}}
+function askQ(who){const t=(document.getElementById('qTxt')||{}).value;if(!t){toast('Напишите вопрос');return;}toast(`Вопрос ушёл ${who}, а не в общий чат. Ответ придёт сюда и в Telegram`);document.getElementById('qTxt').value='';}
+function fillResult(){
+  document.getElementById('stTotal').textContent=total();
+  document.getElementById('stCrit').innerHTML=RUBRIC.map(g=>`<div class="grp"><div class="gh"><span>${g.name}</span><span class="sub">${groupScore(g)} <span class="muted" style="font-weight:600;font-size:12px">/ ${g.max}</span></span></div>${g.checks.map(c=>`<div class="chk"><span class="auto ${checkScore(c)===c.max?'ok':checkScore(c)===0?'no':'man'}">${checkScore(c)===c.max?'✓':checkScore(c)===0?'✗':'½'}</span><div class="t" style="font-weight:500">${c.t}</div><div class="sc"><b>${checkScore(c)}</b><span class="max">/ ${c.max}</span></div></div>`).join('')}</div>`).join('');
+  const s=document.getElementById('sumBody').querySelectorAll('[contenteditable]');
+  document.getElementById('stFb').innerHTML=['Сильные стороны','Что нужно исправить к ревью 2','Советы','Общий комментарий'].map((h,i)=>`<div class="b"><h4>${h}</h4>${s[i]?s[i].innerHTML:''}</div>`).join('');
+  const acc=acceptedAnn();
+  document.getElementById('stAnn').innerHTML=acc.map(a=>`<div class="a"><i style="background:${CATCOLOR[a.cat]==='#fff'?'var(--purple)':CATCOLOR[a.cat]}"></i><div><b>${CATS[a.cat]}</b> · ${a.where}<div class="small muted">${a.msg}</div></div><span></span></div>`).join('')+(sigDecision==='confirm'?`<div class="a"><i style="background:var(--ink)"></i><div><b>Вопросы для устной защиты</b><div class="small muted">Почему порт не читается из .env, хотя godotenv подключён? Чем srv.Close() отличается от srv.Shutdown(ctx)?</div></div><span></span></div>`:'');
+  setStep(8);
+}
+function addMat(){const t=prompt('Ссылка или название материала','Скринкаст запуска сервера, 2 мин');if(t){const d=document.createElement('div');d.textContent='📎 '+t+' · виден ревьюеру';document.getElementById('mats').appendChild(d);toast('Материал приложен к PR #41');}}
+
+/* ---------- координатор: ресурсы, график, Гант, балансировка ---------- */
+const REV=[
+  {id:'alisa',name:'Алиса',kind:'эксперт Авито',hours:[1,1,1,1,1,1,0],chp:{},groups:{'Б':12},hw:[0,1,2,3,4,5,6]},
+  {id:'sergey',name:'Сергей Т.',kind:'приглашённый',hours:[0,1,0,1,0,2,0],chp:{1:true},groups:{'А':10},hw:[0,1]},
+  {id:'anna',name:'Анна Б.',kind:'новый ревьюер',hours:[.5,.5,.5,.5,.5,.5,0],chp:{},groups:{'В':5},hw:[0,1,2,3,4,5,6]},
+];
+const WEEK0=D('2026-08-24'),NWEEKS=9;
+const weekOf=d=>Math.floor(dd(WEEK0,d)/7);
+const cap=r=>r.hours.reduce((t,h,i)=>t+(r.chp[i]?0:h),0);
+const works=r=>Object.values(r.groups).reduce((a,b)=>a+b,0);
+function loadWeek(r,w){ // часы, которые нужны ревьюеру на неделе w
+  const ws=new Date(WEEK0);ws.setDate(ws.getDate()+w*7);const we=new Date(ws);we.setDate(we.getDate()+7);
+  return COURSES.go.hw.filter(h=>r.hw.includes(h.n)).reduce((t,h)=>{const a=D(h.due),b=D(h.rev);const ov=Math.max(0,Math.min(b,we)-Math.max(a,ws))/864e5;const win=Math.max(1,dd(h.due,h.rev));return t+ov/win*works(r)*h.est/60;},0);
+}
+function renderOrg(){
+  const c=COURSES.go;const w=weekOf(TODAY);
+  const demand=REV.reduce((t,r)=>t+loadWeek(r,w+1),0),capacity=REV.reduce((t,r)=>t+cap(r),0);
+  document.getElementById('orgKpi').innerHTML=`
+    <div class="card"><div class="kpi"><b>${demand.toFixed(1).replace('.',',')} / ${capacity} ч</b><span>спрос / мощность на неделю 7–13 сен</span></div><div class="bar" style="margin-top:10px"><i style="width:${Math.min(100,demand/capacity*100)}%;background:${demand>capacity?'var(--red)':'var(--blue)'}"></i></div></div>
+    <div class="card"><div class="kpi"><b style="color:#B3182B">10</b><span>работ без ревьюера · ДЗ 2, группа А</span></div><div class="small muted" style="margin-top:6px">Сергей Т. не назначен на ДЗ 2 · предложение готово</div></div>
+    <div class="card"><div class="kpi"><b>3</b><span>просрочки проверки &gt; 24 ч</span></div><div class="small muted" style="margin-top:6px">все — Сергей Т., ЧП 1 сен · студенты получили новый срок</div></div>
+    <div class="card"><div class="kpi"><b>14 / 27</b><span>ДЗ 1 проверено по потоку</span></div><div class="small muted" style="margin-top:6px">дедлайн 5 сен · прогноз: 24 из 27 в срок</div></div>`;
+  // Гант
+  let g=`<div class="lbl"><small>неделя с</small></div>`;
+  for(let i=0;i<NWEEKS;i++){const d=new Date(WEEK0);d.setDate(d.getDate()+i*7);g+=`<div class="wk ${i===w?'now':''}">${fmt(d)}</div>`;}
+  const tot=NWEEKS*7;const px=d=>dd(WEEK0,d)/tot*100;
+  c.hw.forEach(h=>{const st=hwState(c,h);g+=`<div class="lbl">ДЗ ${h.n}<small>${h.name.slice(0,26)}${h.name.length>26?'…':''} · ${h.est} мин</small></div><div class="lane"><i class="sub" style="left:${px(h.pub)}%;width:${px(h.due)-px(h.pub)}%" onclick="openHw(${h.n})" title="выполнение">сдача до ${fmt(h.due)}</i><i class="${st==='over'?'over':st==='done'?'done':st==='active'||st==='soon'?'act':''}" style="left:${px(h.due)}%;width:${Math.max(4,px(h.rev)-px(h.due))}%" onclick="openHw(${h.n})" title="окно проверки">проверка</i><div class="today" style="left:${px(TODAY)}%"></div></div>`;});
+  REV.forEach(r=>{g+=`<div class="lbl">${r.name}<small>${r.kind} · ${cap(r)} ч/нед · ${works(r)} студ.</small></div>`;
+    for(let i=0;i<NWEEKS;i++){const l=loadWeek(r,i),cp=cap(r);const p=cp?l/cp:9;const cls=l<0.05?'':p>1?'over':p>0.85?'warn':'ok';const chp=i===w&&Object.keys(r.chp).length;g+=`<div class="cell ${cls} ${chp?'chp':''}" title="${r.name}, неделя ${i+1}: нужно ${l.toFixed(1)} ч, есть ${cp} ч">${l<0.05?'—':l.toFixed(1).replace('.',',')+' / '+cp}<small>${l<0.05?'':Math.round(p*100)+'%'}</small></div>`;}});
+  document.getElementById('gantt').innerHTML=g;
+  const over=[];REV.forEach(r=>{for(let i=w;i<NWEEKS;i++){if(loadWeek(r,i)>cap(r))over.push(`${r.name}: неделя ${i+1} (${Math.round(loadWeek(r,i)/cap(r)*100)}%)`);}});
+  document.getElementById('ganttNote').innerHTML=`Перегруз впереди: ${over.join(' · ')||'нет'}. Итоговый проект (ДЗ 6, 70 мин на работу) не помещается в мощность Алисы даже при недельном окне — сервис предлагает расширить окно проверки до двух недель или добавить четвёртого ревьюера.`;
+  // график
+  document.getElementById('schedRows').innerHTML=REV.map(r=>`<tr><td><b>${r.name}</b><div class="small muted">${r.kind}</div></td>${r.hours.map((h,i)=>`<td class="${r.chp[i]?'chp':''}">${r.chp[i]?'<span class="tag r">ЧП</span>':`<select onchange="setHours('${r.id}',${i},this.value)">${[0,.5,1,1.5,2,3].map(v=>`<option value="${v}" ${v===h?'selected':''}>${v||'—'}</option>`).join('')}</select>`}</td>`).join('')}<td class="tot">${cap(r)}</td></tr>`).join('');
+  // оценки времени
+  document.getElementById('estRows').innerHTML=c.hw.map(h=>{const fact={0:6,1:12,2:31}[h.n];const n=27;return `<tr><td><b>ДЗ ${h.n}</b> <span class="small muted">${h.name.slice(0,22)}${h.name.length>22?'…':''}</span></td><td>${h.vol}</td><td>${h.cx}</td><td><input type="number" value="${h.est}" style="width:56px;padding:3px 5px;border:1.5px solid var(--line);border-radius:7px;font:inherit;font-size:13px" onchange="h=COURSES.go.hw.find(x=>x.n===${h.n});h.est=+this.value;renderOrg();renderLedger();toast('Оценка обновлена, план пересчитан')"></td><td>${fact?fact+' мин'+(Math.abs(fact-h.est)/h.est>0.3?' <span class="tag y">≠</span>':''):'<span class="muted">—</span>'}</td><td>${n}</td><td><b>${(n*h.est/60).toFixed(1).replace('.',',')}</b></td></tr>`;}).join('');
+  // балансировка на след. неделю
+  document.getElementById('balRows').innerHTML=REV.map(r=>{const l=loadWeek(r,w+1),cp=cap(r);const p=Math.min(100,l/cp*100);return `<div class="r"><span>${r.name}</span><div class="stack" title="нужно ${l.toFixed(1)} ч из ${cp}"><i style="width:${p}%;background:${l>cp?'var(--red)':l>cp*0.85?'var(--yellow)':'var(--blue)'}"></i></div><span class="lg">нужно ${l.toFixed(1).replace('.',',')} ч · есть ${cp} ч · ${l>cp?'<b style="color:#B3182B">перегруз '+Math.round(l/cp*100)+'%</b>':'запас '+(cp-l).toFixed(1).replace('.',',')+' ч'}</span></div>`;}).join('')+`<div class="r"><span class="muted">не назначено</span><div class="stack"><i style="width:100%;background:var(--purple)"></i></div><span class="lg"><b style="color:#5E2FB4">10 работ ДЗ 2 · 5,8 ч</b> · группа А</span></div>`;
+  document.getElementById('props').innerHTML=[
+    ['ДЗ 2, группа А без ревьюера','назначить Сергея Т. на 6 работ (запас 2,9 ч) и Анну Б. на 4 (запас 0,7 ч + очевидные)','Сергей Т. и Анна Б. назначены на ДЗ 2, уведомления ушли'],
+    ['Просрочка ДЗ 1 · Сергей Т., ЧП','3 работы → Алиса 2 (запас 0,6 ч), Анна Б. 1 · студентам новый срок 7 сен','3 работы переданы, студенты получили новый срок'],
+    ['ДЗ 6 · итоговый проект, спрос 14 ч у Алисы','расширить окно проверки до 27 окт и привлечь четвёртого ревьюера на группу Б','Окно расширено, запрос на ревьюера ушёл админу'],
+  ].map(p=>`<div class="p"><div><b>${p[0]}</b><div class="k">${p[1]}</div></div><div class="row"><button class="btn sm" onclick="applyProp(this,'${p[2]}')">Применить</button><button class="btn sm ghost" onclick="this.closest('.p').classList.add('done');toast('Отклонено · сервис предложит альтернативу')">Отклонить</button></div></div>`).join('');
+}
+function setHours(id,i,v){const r=REV.find(x=>x.id===id);r.hours[i]=+v;renderOrg();}
+function applyProp(b,msg){b.closest('.p').classList.add('done');b.closest('.row').innerHTML='<span class="tag g">применено</span>';if(msg.startsWith('Сергей')){document.getElementById('asgS2').value='назначить';}toast(msg);}
+
+/* ---------- эксперт: задания, критерии, эталон, агент ---------- */
+let xHw=1;const XCRIT={};
+function xCrit(n){if(!XCRIT[n])XCRIT[n]=n===1?RUBRIC.flatMap(g=>g.checks.map(c=>({g:g.name,t:c.t,max:c.max,how:c.how,crit:c.crit}))):n===0?[{g:'Окружение',t:'Go 1.22+, golangci-lint настроен',max:2,how:'lint_test.go',crit:true},{g:'Репозиторий',t:'Репозиторий по шаблону, первый PR открыт',max:2,how:'вручную',crit:true}]:n===2?[{g:'База',t:'Подключение через pgx, конфиг из env',max:3,how:'db_conn_test.go',crit:true},{g:'База',t:'Ретрай подключения при старте',max:2,how:'вручную',crit:false},{g:'Миграции',t:'Миграции goose/migrate, up и down',max:4,how:'migrate_test.go',crit:true},{g:'CRUD',t:'Ручки create/get/list/delete курьеров',max:6,how:'crud_test.go',crit:true},{g:'Качество',t:'Ошибки БД не текут наружу как 500 без лога',max:5,how:'вручную',crit:false}]:[];return XCRIT[n];}
+function renderXList(){const c=COURSES.go;document.getElementById('xHwList').innerHTML=c.hw.map(h=>{const st=hwState(c,h);return `<div class="h ${xHw===h.n?'on':''}" onclick="xHw=${h.n};renderTask()"><span><b>ДЗ ${h.n}</b> ${h.name}</span><small>${st==='future'?'план':st==='done'?'закрыто':'идёт'}</small></div>`;}).join('');}
+function renderTask(){
+  renderXList();const h=COURSES.go.hw.find(x=>x.n===xHw);const cr=xCrit(h.n);const max=cr.reduce((t,c)=>t+c.max,0);const live=hwState(COURSES.go,h)!=='future';
+  document.getElementById('xTask').innerHTML=`
+    <div class="card"><div class="row sp wrap" style="margin-bottom:8px"><h3>ДЗ ${h.n} · ${h.name}</h3><div class="row wrap"><span class="tag ${live?'g':''}">${live?'опубликовано '+fmt(h.pub)+' · рубрика v2 заморожена':'запланировано · публикация '+fmt(h.pub)}</span></div></div>
+      <div class="grid g4" style="gap:10px">
+        <div><div class="small muted">название</div><input type="text" value="${h.name}" style="width:100%"></div>
+        <div><div class="small muted">публикация · сдача · проверка</div><input type="text" value="${fmt(h.pub)} · ${fmt(h.due)} · ${fmt(h.rev)}" style="width:100%"></div>
+        <div><div class="small muted">объём · сложность</div><div class="row" style="gap:6px"><select style="flex:1"><option ${h.vol==='малый'?'selected':''}>малый</option><option ${h.vol==='средний'?'selected':''}>средний</option><option ${h.vol==='большой'?'selected':''}>большой</option></select><select style="flex:1"><option ${h.cx==='низкая'?'selected':''}>низкая</option><option ${h.cx==='средняя'?'selected':''}>средняя</option><option ${h.cx==='высокая'?'selected':''}>высокая</option></select></div></div>
+        <div><div class="small muted">оценка времени проверки, мин</div><input type="text" value="${h.est}" style="width:100%" onchange="COURSES.go.hw.find(x=>x.n===${h.n}).est=+this.value;toast('Оценка времени обновлена: план координатора пересчитан')"></div>
+      </div>
+      <div class="small muted" style="margin:10px 0 4px">условие задания (task${h.n}.md) — то, что подставится в <span class="ph">{{task}}</span></div>
+      <textarea class="txt" style="min-height:80px">${h.desc||''}</textarea>
+      <div class="row wrap" style="margin-top:8px"><button class="btn sm" onclick="toast('Задание сохранено'+(${live}?' · для потока ноябрь: v3':''))">Сохранить</button>${live?'':'<button class="btn sm pri" onclick="toast(\'Опубликовано: студенты получили уведомление, статус → «опубликована»\')">Опубликовать сейчас</button>'}</div>
+    </div>
+    <div class="card"><div class="row sp wrap" style="margin-bottom:6px"><h3>Критерии · <span class="muted">${cr.length} проверок, макс ${max}</span></h3><span class="small muted">группа → проверка → макс балл → как проверяем → критичность · подставляются в <span class="ph">{{criteria}}</span></span></div>
+      <div class="crit h"><span>проверка</span><span>макс</span><span>как проверяем</span><span>критичность</span><span></span></div>
+      ${cr.map((c,i)=>`<div class="crit"><div><div class="small muted">${c.g}</div><input type="text" value="${c.t}" ${live?'disabled':''}></div><input type="number" value="${c.max}" ${live?'disabled':''}><select ${live?'disabled':''}><option ${c.how!=='вручную'?'selected':''}>${c.how!=='вручную'?c.how:'автотест'}</option><option ${c.how==='вручную'?'selected':''}>вручную</option><option>агент по эталону</option></select><select ${live?'disabled':''}><option ${c.crit?'selected':''}>критикал</option><option ${!c.crit?'selected':''}>не критикал</option></select><button class="btn sm ghost" onclick="${live?`toast('Рубрика v2 заморожена на время потока — правка уйдёт в бэклог v3')`:`XCRIT[${h.n}].splice(${i},1);renderTask()`}">${live?'⚑ в v3':'✕'}</button></div>`).join('')}
+      <div class="row wrap" style="margin-top:10px"><button class="btn sm" onclick="addCrit(${h.n})">+ Добавить критерий</button><button class="btn sm ghost" onclick="toast('Импортировано из шаблона организаторов: группа проверок / макс балл / проверка / как проверяем / критичные ошибки')">Импорт из шаблона xlsx</button>${live?'<span class="small muted">правки во время потока → бэклог v3, текущие баллы остаются на v2</span>':''}</div>
+    </div>
+    <div class="card"><div class="row sp wrap" style="margin-bottom:6px"><h3>Эталонный ответ и примеры уровней</h3><span class="small muted">подставляются в <span class="ph">{{reference}}</span> · агент сравнивает по критериям, а не «похоже / не похоже»</span></div>
+      <div class="up">
+        <div class="u ${h.n<=1?'has':''}" onclick="upRef(this,'эталонный ответ')"><b>эталонный ответ</b>${h.n<=1?'solution_good/ · 4 файла · автор: эксперт':'загрузить · md, go, ipynb, docx'}</div>
+        <div class="u ${h.n<=1?'has':''}" onclick="upRef(this,'слабое решение')"><b>слабое</b>${h.n<=1?'solution_weak/ · калибр. ~5/16':'пример уровня'}</div>
+        <div class="u ${h.n<=1?'has':''}" onclick="upRef(this,'среднее решение')"><b>среднее</b>${h.n<=1?'solution_mid/ · ~10/16':'пример уровня'}</div>
+        <div class="u ${h.n<=1?'has':''}" onclick="upRef(this,'хорошее решение')"><b>хорошее</b>${h.n<=1?'solution_good/ · ~15/16':'пример уровня'}</div>
+      </div>
+      <div class="small muted" style="margin-top:8px">Эталон необязателен: если его нет, агент опирается на критерии и три примера уровней (как в репозитории homework_examples). С эталоном разброс между прогонами ниже на ~0,3 балла.</div>
+      <div class="small muted" style="margin-top:6px">Гайд ревьюера (<span class="ph">{{guide}}</span>): <a href="#" onclick="toast('Открыт гайд: приоритет флага над env, Close() vs Shutdown(ctx), любой роутер');return false">guide_dz${h.n}.md</a> · политика ИИ курса — во вкладке «Настройка агента»</div>
+    </div>`;
+}
+function addCrit(n){const t=prompt('Формулировка проверки','Есть unit-тесты на ретрай подключения');if(!t)return;xCrit(n).push({g:'Новое',t,max:1,how:'вручную',crit:false});renderTask();toast(hwState(COURSES.go,COURSES.go.hw.find(x=>x.n===n))==='future'?'Критерий добавлен':'Критерий добавлен в черновик v3 — текущий поток на v2');}
+function addTask(){const t=prompt('Название нового задания','Наблюдаемость: логи, метрики, трейсы');if(!t)return;const c=COURSES.go;const n=c.hw.length;c.hw.push({n,name:t,max:10,pub:'2026-10-06',due:'2026-10-20',rev:'2026-10-24',est:30,vol:'средний',cx:'средняя',desc:'',mats:['task'+n+'.md']});ST[n]='planned';xHw=n;renderTask();renderLedger();renderStudentScreen();renderOrg();toast('Задание создано как «запланировано»: студенты видят даты, координатор — окно в Ганте');}
+function upRef(el,what){el.classList.add('has');el.innerHTML=`<b>${what}</b>загружено · 1 файл`;toast(what+': загружено, будет подставляться в {{reference}}');}
+
+const BASE_PROMPT=`Ты — ассистент ревьюера учебного курса. Проверь работу студента строго по критериям.
+Не выставляй итоговую оценку и не решай за ревьюера — твоя задача: черновик баллов по каждой проверке, пометки на фрагментах и основания.
+
+## Задание
+{{task}}
+
+## Критерии (группа → проверка → макс балл → как проверяем → критичность)
+{{criteria}}
+
+## Эталон и калиброванные примеры уровней (слабое / среднее / хорошее)
+{{reference}}
+Сравнивай работу с эталоном только через критерии: совпадение с эталоном само по себе баллов не даёт.
+
+## Гайд ревьюера курса
+{{guide}}
+
+## Политика по ИИ-заимствованиям
+{{ai_policy}}
+
+## Работа студента (секреты и персональные данные уже замаскированы)
+{{solution}}
+
+## Правила
+1. Для каждой проверки: балл (0..max), уверенность (0..1), фрагменты-основания (файл:строки). Если уверенность < порога — воздержись и объясни, что нужно посмотреть человеку.
+2. Пометки: категория (логическая ошибка / ошибка в коде / недостаточно раскрыто / сильное место / подозрение на ИИ / заимствование), фрагмент, формулировка для студента, совет.
+3. Не придумывай фактов, которых нет в работе. Каждое замечание должно иметь якорь на фрагмент.
+4. Сигнал ИИ — только с основаниями (процессные признаки важнее стилистических) и с вопросами для устной защиты. Он не влияет на балл.
+5. Ответ — JSON по схеме review_v2.`;
+function resetPrompt(q){document.getElementById('prompt').value=BASE_PROMPT;if(!q)toast('Базовый промпт восстановлен');}
+function previewPrompt(){const p=document.getElementById('promptPrev');p.classList.toggle('hidden');if(!p.classList.contains('hidden'))p.innerHTML=`<div class="note" style="font-family:ui-monospace,monospace;font-size:12px;white-space:pre-wrap">${document.getElementById('prompt').value.replace('{{task}}','[task1.md · 1 240 симв.: Подготовить каркас Go-приложения…]').replace('{{criteria}}','[12 проверок, 4 группы, макс 16 · 5 автотестов уже выполнены: результаты приложены]').replace('{{reference}}','[solution_good/ + 3 примера уровней: weak≈5, mid≈10, good≈15]').replace('{{guide}}','[guide_dz1.md: приоритет флага над env; Close() vs Shutdown(ctx) — 0 за «через context»; любой роутер]').replace('{{ai_policy}}','[порог 60%: <30% не отмечать · 30–60% сигнал ревьюеру · >60% сигнал + вопросы для защиты, черновик балла не выставлять · штраф выкл]').replace('{{solution}}','[PR #41 · 4 файла · 214 строк · 1 секрет замаскирован]').replace(/\[[^\]]+\]/g,m=>`<span class="ph">${m}</span>`)}</div>`;}
+function setAiThr(v){document.getElementById('aiThr').textContent=v;const lo=Math.round(v/2);document.getElementById('aiPol').innerHTML=`
+  <div class="p"><span class="tag g">&lt; ${lo}%</span><span>не отмечать: обычная доля шаблонного кода и подсказок IDE</span></div>
+  <div class="p"><span class="tag y">${lo}–${v}%</span><span>сигнал ревьюеру с основаниями; на балл не влияет, студенту не показывается без решения ревьюера</span></div>
+  <div class="p on"><span class="tag r">&gt; ${v}%</span><span>сигнал + вопросы для устной защиты; черновик балла по «ручным» проверкам не выставляется — решает только человек. По правилу курса ревьюер может применить штраф −2</span></div>`;}
+
+/* аналитика по критериям: правил ли ревьюер решение агента */
+const EDIT={1:{c1:{no:26,ed:1,d:{'-1':1}},c2:{no:27,ed:0,d:{}},c3:{no:25,ed:2,d:{'-1':2}},c4:{no:17,ed:10,d:{'-1':4,'1':6}},c5:{no:27,ed:0,d:{}},c6:{no:24,ed:3,d:{'1':3}},c7:{no:26,ed:1,d:{'-1':1}},c8:{no:25,ed:2,d:{'1':2}},c9:{no:23,ed:4,d:{'-1':1,'1':3}},c10:{no:24,ed:3,d:{'-1':2,'-2':1}},c11:{no:14,ed:13,d:{'-2':3,'-1':5,'1':4,'2':1}},c12:{no:24,ed:3,d:{'-1':1,'1':2}},c13:{no:25,ed:2,d:{'1':2}},c14:{no:23,ed:4,d:{'-1':1,'1':3}}},
+  0:{x1:{no:26,ed:1,d:{'1':1}},x2:{no:24,ed:3,d:{'-1':2,'1':1}}}};
+const EDITN={1:Object.fromEntries(allChecks().map(c=>[c.id,c.t])),0:{x1:'Go 1.22+, golangci-lint настроен',x2:'Репозиторий по шаблону, первый PR открыт'}};
+let chSel='c11';
+function renderCharts(){
+  const hw=document.getElementById('chHw').value;const E=EDIT[hw];if(!E[chSel])chSel=Object.keys(E)[0];
+  document.getElementById('stk').innerHTML=Object.entries(E).map(([id,e])=>{const n=e.no+e.ed;const p=Math.round(e.ed/n*100);return `<div class="r ${chSel===id?'sel':''}" onclick="chSel='${id}';renderCharts()"><span title="${EDITN[hw][id]}">${EDITN[hw][id].slice(0,34)}${EDITN[hw][id].length>34?'…':''}</span><div class="b"><i style="width:${100-p}%;background:var(--green)"></i><i style="width:${p}%;background:${p>35?'var(--red)':'var(--yellow)'}"></i></div><span style="text-align:right;${p>35?'color:#B3182B;font-weight:700':''}">${p}%</span></div>`;}).join('');
+  const all=Object.values(E);const tn=all.reduce((t,e)=>t+e.no,0),te=all.reduce((t,e)=>t+e.ed,0);let sd=0,cnt=0;all.forEach(e=>Object.entries(e.d).forEach(([k,v])=>{sd+=k*v;cnt+=v;}));
+  document.getElementById('stkSum').innerHTML=`<span class="small"><b>${Math.round(tn/(tn+te)*100)}%</b> решений без правок</span><span class="small">средний сдвиг при правке <b>${cnt?(sd/cnt>0?'+':'')+(sd/cnt).toFixed(2).replace('.',','):'0'}</b> балла</span><span class="small">критериев с правками &gt; 35%: <b>${all.filter(e=>e.ed/(e.no+e.ed)>0.35).length}</b></span>`;
+  const e=E[chSel];const keys=['-2','-1','0','1','2'];const mx=Math.max(1,...keys.map(k=>e.d[k]||0));
+  document.getElementById('histTitle').textContent=EDITN[hw][chSel].slice(0,40);
+  document.getElementById('hist').innerHTML=keys.map(k=>`<div><b>${e.d[k]||''}</b><i class="${k==='0'?'z':k<0?'neg':''}" style="height:${(e.d[k]||0)/mx*85}%"></i></div>`).join('');
+  document.getElementById('hx').innerHTML=keys.map(k=>`<span>${k>0?'+':''}${k}</span>`).join('');
+  const neg=(e.d['-1']||0)+(e.d['-2']||0),pos=(e.d['1']||0)+(e.d['2']||0);const share=Math.round(e.ed/(e.ed+e.no)*100);
+  document.getElementById('histNote').innerHTML=share>35&&neg&&pos?`<b>Разброс в обе стороны при ${share}% правок</b> — ревьюеры сами не сходятся: критерий сформулирован неоднозначно. Совпадает с флажками трёх ревьюеров → в бэклог v3.`:share>35?`<b>Сдвиг в одну сторону</b> — агент систематически ${neg>pos?'мягче':'строже'}: править промпт или эталон, не критерий.`:pos>neg?`Правок мало (${share}%), агент чуть мягче ревьюеров. Критерий работает.`:`Правок мало (${share}%). Критерий и агент согласованы.`;
+}
+
+/* ---------- аналитика: спарклайн ---------- */
+function renderSpark(){const v=[54,31,39];const W=600,H=120,pad=14;const y=x=>H-pad-(x/70)*(H-2*pad);const xs=[pad,W/2,W-pad];
+  document.getElementById('spark').innerHTML=`<line x1="0" x2="${W}" y1="${y(48)}" y2="${y(48)}" stroke="#C9C3E4" stroke-dasharray="6 5"/><text x="${W-4}" y="${y(48)-4}" font-size="11" fill="#6B6E85" text-anchor="end">цель 48 ч</text>
+    <polyline points="${xs.map((x,i)=>x+','+y(v[i])).join(' ')}" fill="none" stroke="#00AAFF" stroke-width="3" stroke-linejoin="round"/>
+    ${xs.map((x,i)=>`<circle cx="${x}" cy="${y(v[i])}" r="5" fill="${v[i]>48?'#FF4053':'#04E061'}" stroke="#fff" stroke-width="2"/><text x="${x}" y="${y(v[i])-10}" font-size="12" font-weight="700" fill="#1B1D33" text-anchor="middle">${v[i]} ч</text>`).join('')}`;}
+
+/* ---------- уведомления ---------- */
+const NT={
+ student:{title:'Студент не сдал к дедлайну · Тимур Х., ДЗ 1, дедлайн 1 сен 23:59',sub:'напоминания студенту → координатор при T+48 ч или если не сдали > 30% потока',
+  esc:[['T−24 ч','warn'],['дедлайн 1 сен','now'],['T+48 ч','hot'],['T+7 д · штраф −50%','hot']],
+  cols:{
+   'Студент':[{t:'T−24 ч',ch:'tg',lvl:'warn',body:'⏰ <b>ДЗ 1 · Boilerplate</b> — сдача до завтра 23:59. Ссылка на PR ещё не прикреплена.',acts:['Открыть задание','Всё сдам, не напоминать']},{t:'T0 · 2 сен 00:05',ch:'tg',lvl:'hot',body:'<b>ДЗ 1 не сдано</b>, дедлайн прошёл. Дослать можно: −10% за каждые 2 дня, максимум −50%.<br>Уважительная причина — приложите подтверждение, штраф до решения не применяется.',acts:['Дослать работу','Уважительная причина']},{t:'T+48 ч',ch:'tg',lvl:'hot',body:'Прошло 2 дня, штраф сейчас <b>−10%</b>. Через 5 дней — −50%. Координатор Ксения знает о ситуации и может помочь со сроком.',acts:['Дослать','Написать координатору']},{t:'в кабинете',ch:'app',lvl:'hot',body:'Статус ДЗ 1: <span class="tag r">не сдана</span> · штраф −10% · до −50% через 5 дней'}],
+   'Ревьюер':[{t:'T0',ch:'app',lvl:'info',body:'В ведомости ДЗ 1: Тимур Х. — <span class="tag r">не сдано</span>. Работа не в вашем плане недели; если дошлёт — придёт отдельно с пометкой «просрочка».'},{cls:'none',body:'Telegram ревьюеру не шлём: действий от него нет'}],
+   'Координатор':[{t:'T+48 ч',ch:'tg',lvl:'warn',body:'🟡 <b>ДЗ 1 · не сдали 2 студента</b><br>Тимур Х., Артём К. · напоминаний: 2, ответа нет · штраф −10% в день',acts:['Написать студентам','Продлить срок','Списать без штрафа']},{t:'T+48 ч',ch:'app',lvl:'warn',body:'Инбокс «Исключения дня»: <b>просрочка сдачи · 2</b> — с кнопками решения'},{t:'если > 30% потока',ch:'tg',lvl:'hot',body:'🔴 <b>9 из 27 не сдали ДЗ 2</b> за сутки до дедлайна.<br>Предложение: сдвинуть сдачу и окно проверки на 2 дня — план ревьюеров сохранится.',acts:['Сдвинуть на 2 дня','Оставить']}],
+   'Эксперт · Админ':[{t:'пн 09:00',ch:'mail',lvl:'info',body:'<b>Дайджест недели, эксперту:</b> ДЗ 1 — 2 из 27 не сдано, 4 сдано с опозданием, медиана времени студента 6 ч при плане 4 ч. Стоит ли пересмотреть объём?',acts:['Открыть аналитику']},{cls:'none',body:'Админ: без уведомлений — не его уровень'}]}},
+ reviewer:{title:'Ревьюер не проверил к дедлайну · Сергей Т., 3 работы ДЗ 1, окно до 5 сен',sub:'напоминания ревьюеру → координатор при T0 с готовым предложением → админ при T+24 ч',
+  esc:[['T−48 ч','warn'],['T−24 ч','warn'],['дедлайн 5 сен','now'],['T+24 ч · админ','hot']],
+  cols:{
+   'Студент':[{t:'T0',ch:'tg',lvl:'info',body:'Проверка <b>ДЗ 1</b> задерживается. Новый срок результата — <b>7 сен</b>. На балл это не влияет; ревью 2 сдвигается на 12 сен.',acts:['Открыть статус']},{t:'в кабинете',ch:'app',lvl:'info',body:'Статус: <span class="tag p">в процессе ревью</span> · задерживается · новый срок 7 сен · ревьюер может смениться'},{cls:'none',body:'До дедлайна студенту ничего не шлём — он видит срок в статусе'}],
+   'Ревьюер':[{t:'T−48 ч',ch:'tg',lvl:'info',body:'📋 <b>ДЗ 1: 3 работы до 5 сен</b>, ~75 мин. Черновики и автотесты готовы, начать стоит с Марии С. (агент воздержался).',acts:['Открыть ведомость']},{t:'T−24 ч',ch:'tg',lvl:'warn',body:'⏰ <b>Осталось 24 ч: 3 работы ДЗ 1.</b> Не успеваете? Передайте часть — сервис уже знает, у кого есть запас.',acts:['Попросить перераспределить','Отметить ЧП','Открыть']},{t:'T0 · 5 сен 23:59',ch:'tg',lvl:'hot',body:'🔴 <b>Дедлайн проверки ДЗ 1 прошёл.</b> 3 работы не проверены. Координатор получил уведомление; студентам ушёл новый срок 7 сен.',acts:['Открыть','Передать все']},{t:'T+2 ч',ch:'tg',lvl:'ok',body:'✅ Работы переданы: 2 → Алиса, 1 → Анна Б. Спасибо, что отметили ЧП — план недели пересчитан, история сохранена.'}],
+   'Координатор':[{t:'T0',ch:'tg',lvl:'hot',body:'🔴 <b>Просрочка проверки: Сергей Т.</b>, 3 работы ДЗ 1, без действий 72 ч (ЧП 1 сен). Предложение: 2 → Алиса (запас 0,6 ч), 1 → Анна Б. Студенты уже получили срок 7 сен.',acts:['Применить','Написать Сергею','Другое решение']},{t:'T0',ch:'app',lvl:'hot',body:'Инбокс: <b>просрочка проверки</b> · Гант: неделя Сергея помечена ЧП, спрос перенесён'},{t:'T+24 ч, если не решено',ch:'tg',lvl:'hot',body:'⚠️ Просрочка не решена 24 ч. Уведомлён админ. Сервис применит предложение автоматически через 12 ч, если не будет действий.',acts:['Применить сейчас']}],
+   'Эксперт · Админ':[{t:'T+24 ч',ch:'mail',lvl:'hot',body:'<b>Админу:</b> поток Go — 3 работы просрочены &gt; 24 ч, без решения координатора. p90 цикла вырастет с 31 до ~52 ч (SLA 48).',acts:['Открыть кабинет координатора']},{t:'T+24 ч',ch:'tg',lvl:'hot',body:'⚠️ SLA потока Go под угрозой: 3 просроченные проверки. Координатор: Ксения.',acts:['Открыть']},{t:'пн 09:00',ch:'mail',lvl:'info',body:'<b>Эксперту, дайджест:</b> 3 просрочки проверки, причина — ЧП, критерии не при чём.'}]}},
+ chp:{title:'Ревьюер отметил ЧП · Алиса, среда 2 сен, −1 ч из плана недели',sub:'мгновенно: координатору с предложением · ревьюеру подтверждение · студентам только если срок сдвинулся',
+  esc:[['ЧП отмечено','now'],['+5 мин · предложение','warn'],['+24 ч без замены · админ','hot']],
+  cols:{
+   'Студент':[{t:'только если срок сдвинулся',ch:'tg',lvl:'info',body:'Ревьюер по <b>ДЗ 1</b> сменился: теперь Анна Б. Срок результата прежний — 5 сен.'},{cls:'none',body:'Если срок не меняется — студент ничего не получает'}],
+   'Ревьюер':[{t:'сразу',ch:'app',lvl:'ok',body:'ЧП на среду отмечено. Мощность недели: 6 → 5 ч, загрузка 108%. Координатор получил предложение передать 2 работы.'},{t:'+20 мин',ch:'tg',lvl:'ok',body:'✅ Координатор передал 2 работы ДЗ 1 Анне Б. Ваш план на неделю: 5 работ, 2,1 ч.'}],
+   'Координатор':[{t:'сразу',ch:'tg',lvl:'warn',body:'🟡 <b>ЧП: Алиса</b>, среда, −1 ч. Перегруз 108%. Предложение: 2 работы ДЗ 1 (очевидные: Никита В., Ольга П.) → Анна Б., запас 1,5 ч.',acts:['Применить','Выбрать другого','Оставить как есть']},{t:'сразу',ch:'app',lvl:'warn',body:'Инбокс: <b>ЧП ревьюера</b> · в графике день помечен, история недели сохранена'}],
+   'Эксперт · Админ':[{t:'+24 ч, если замены нет',ch:'tg',lvl:'hot',body:'⚠️ ЧП Алисы не закрыто заменой сутки: 2 работы ДЗ 1 без ревьюера. Нужен четвёртый ревьюер на группу Б.',acts:['Найти ревьюера']},{cls:'none',body:'Эксперт: не участвует'}]}},
+ sla:{title:'Срыв SLA потока · p90 цикла «сдал → фидбэк» 52 ч при цели 48',sub:'считается ежедневно по потоку · координатор первым, админ — через сутки без улучшения',
+  esc:[['p90 > 48 ч · день 1','warn'],['день 2 · админ','hot'],['улучшилось','now']],
+  cols:{
+   'Студент':[{cls:'none',body:'Студентам SLA не показываем — только свои сроки и статусы'}],
+   'Ревьюер':[{t:'день 1',ch:'app',lvl:'info',body:'В ведомости: <b>поток отстаёт от SLA</b>. Ваша очередь: 7 работ, из них 2 ждут &gt; 48 ч — они подняты наверх.'}],
+   'Координатор':[{t:'день 1 · 09:00',ch:'tg',lvl:'warn',body:'🟡 <b>SLA потока Go: p90 = 52 ч</b> (цель 48). Причина: 10 работ ДЗ 2 без ревьюера + 3 просрочки. Предложение балансировки готово.',acts:['Открыть балансировку','Применить всё']},{t:'день 1',ch:'app',lvl:'warn',body:'Аналитика: точка на графике цикла красная, воронка показывает узкое место — очередь ревьюера, не агент'}],
+   'Эксперт · Админ':[{t:'день 2 · 09:00',ch:'mail',lvl:'hot',body:'<b>Админу:</b> SLA потока Go нарушен второй день (p90 52 ч). Предложения балансировки не применены. Мощность 16,5 ч при спросе 19 ч — нужен ревьюер или сдвиг окна.',acts:['Открыть аналитику','Написать координатору']},{t:'день 3 · улучшилось',ch:'mail',lvl:'ok',body:'✅ p90 потока Go — 39 ч. Применены: назначение на ДЗ 2, передача 3 работ.'}]}}
+};
+function renderNotif(ev){
+  const e=NT[ev];document.getElementById('ntTitle').textContent=e.title;document.getElementById('ntSub').textContent=e.sub;
+  document.getElementById('esc').innerHTML=e.esc.map((t,i)=>`${i?'<span class="l"></span>':''}<span class="t ${t[1]}">${t[0]}</span>`).join('');
+  const chn={tg:'✈ Telegram',app:'◐ в сервисе',mail:'✉ почта'};
+  document.getElementById('ngrid').innerHTML=Object.entries(e.cols).map(([role,list])=>`<div class="ncol"><h3>${role}<span class="small muted" style="font-weight:600">${list.filter(m=>!m.cls).length} сообщ.</span></h3>${list.map(m=>m.cls==='none'?`<div class="none">${m.body}</div>`:`<div class="ntf ${m.lvl}"><div class="h"><span class="ch ${m.ch}">${chn[m.ch]}</span><span>${m.t}</span></div><div class="body">${m.body}</div>${m.acts?`<div class="acts">${m.acts.map((a,i)=>`<span class="${i===0?'pri':''}" onclick="toast('Действие из уведомления: ${a}')">${a}</span>`).join('')}</div>`:''}</div>`).join('')}</div>`).join('');
+}
+document.querySelectorAll('#ntabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#ntabs button').forEach(x=>x.classList.toggle('on',x===b));renderNotif(b.dataset.e);});
+
+/* ---------- выгрузка в формате шаблона ---------- */
+function sheetRows(){
+  const rows=[];const acc=acceptedAnn();
+  RUBRIC.forEach((g,gi)=>g.checks.forEach((c,ci)=>{
+    const comment=acc.filter(a=>a.check===c.id).map(a=>a.msg).join(' | ');
+    rows.push([gi===0&&ci===0?1:'',ci===0?g.name:'',ci===0?g.max:'',c.t,c.how,c.crit?'критикал':'не критикал',confirmed?checkScore(c):'',comment,'','',gi===0&&ci===0?(confirmed?total():''):'']);
+  }));
+  rows.push(['','ИТОГО',MAXTOTAL,'','','','','','','','']);
+  return rows;
+}
+function renderSheet(){
+  const head=['№ дз','группа проверок','макс балл','проверка','как проверяем','критичные ошибки','Ревью 1','Комментарии','Ревью 2','Ревью после Q&A','Сумма за домашку'];
+  const rows=sheetRows();
+  document.getElementById('sheetPrev').innerHTML=`<table><thead><tr><th colspan="6"></th><th colspan="5" style="text-align:center">Артём К. · github.com/…/pull/41</th></tr><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((v,i)=>`<td class="${[6,8,9,10].includes(i)?'n':''} ${i===1||i===2?'g':''}">${v}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+function exportXlsx(){
+  const head=['№ дз','группа проверок','макс балл (если всё правильно с 1 раза)','проверка','как проверяем','критичные ошибки','Ревью 1','Комментарии','Ревью 2','Ревью после Q&A','Сумма за домашку'];
+  const rows=sheetRows();
+  const aoa=[['','','','Как пользоваться табличкой. Ревьюеры заполняют только Ревью 1 и Ревью 2, итог считается автоматически. Выгрузка Avito AI Reviewer, '+new Date().toLocaleDateString('ru')],['','','','','','','ФИО студента: Артём К.'],['','','','','','','Ссылка на решение: https://github.com/…/service-courier/pull/41'],head,...rows];
+  try{
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    const first=5,last=4+rows.length-1;
+    ws['K'+first]={f:`SUM(${Array.from({length:last-first+1},(_,i)=>`MAX(G${first+i},I${first+i})`).join(',')})`};
+    ws['!cols']=[{wch:6},{wch:22},{wch:10},{wch:60},{wch:28},{wch:14},{wch:9},{wch:50},{wch:9},{wch:14},{wch:12}];
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Критерии | Шаблон оценки');
+    XLSX.writeFile(wb,'vedomost_go_dz1_artem_k.xlsx');toast('Выгружено: vedomost_go_dz1_artem_k.xlsx — структура вашего шаблона');setStep(9);
+  }catch(e){toast('Для выгрузки .xlsx нужен доступ к cdnjs. Структура показана в предпросмотре');}
+}
+
+/* ---------- прочее ---------- */
+function resolve(btn,msg){const it=btn.closest('.it');it.classList.add('done');btn.replaceWith(Object.assign(document.createElement('span'),{className:'tag g',textContent:'сделано'}));bumpInbox(-1);toast(msg);}
+function bumpInbox(d){const n=document.getElementById('inboxN');n.textContent=Math.max(0,+n.textContent+d);n.style.display=+n.textContent?'':'none';}
+let tt;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2800);}
+
+/* ---------- init ---------- */
+renderLedger();renderHw();renderAnn();renderSheet();renderStudentScreen();renderOrg();renderTask();resetPrompt(true);setAiThr(60);renderCharts();renderSpark();renderNotif('student');
+/* deep link: #screen или #screen:параметр (например #expert:agent, #student:0, #hw:2, #notif:reviewer) */
+(function(){const h=location.hash.replace('#','');if(!h)return;const [s,a]=h.split(':');
+  if(s==='hw'){openHw(+(a||1));return;}
+  if(s==='student'&&a!==undefined){stSel=+a;renderStudentScreen();}
+  if(s==='expert'&&a){document.querySelectorAll('#xtabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===a));document.querySelectorAll('#s-expert .stab').forEach(x=>x.classList.toggle('on',x.id==='x-'+a));}
+  if(s==='notif'&&a){document.querySelectorAll('#ntabs button').forEach(b=>b.classList.toggle('on',b.dataset.e===a));renderNotif(a);}
+  if(document.getElementById('s-'+s))go(s);})();
+</script>
+
+</body>
+</html>
