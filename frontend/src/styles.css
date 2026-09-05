@@ -1351,6 +1351,17 @@ dialog::backdrop {
   font-size: 10px;
   user-select: none;
 }
+.source-text {
+  white-space: pre;
+  tab-size: 2;
+}
+.source-text .hljs {
+  background: transparent;
+  padding: 0;
+}
+.source-code.syntax-highlighted {
+  background: #f6f8fa;
+}
 .source-line:hover {
   background: #f4effc;
 }
@@ -1506,6 +1517,55 @@ dialog::backdrop {
   color: var(--muted);
   max-width: 280px;
   margin: 0;
+}
+.source-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+.source-filters button {
+  border: 1px solid #e7dff3;
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.source-filters button.active {
+  background: #1f1f1f;
+  color: #fff;
+  border-color: #1f1f1f;
+}
+.source-line.ai-highlight {
+  background: #fde2e2;
+}
+.source-line.ai-highlight.ai-medium {
+  background: #fff3cd;
+}
+.source-line.ai-highlight.ai-low {
+  background: #fff8e1;
+}
+.category-label.category-ai .category-dot {
+  background: #e35d6a;
+}
+.integrity-panel {
+  display: grid;
+  gap: 16px;
+}
+.integrity-overall {
+  margin: 8px 0 4px;
+  font-size: 1.05rem;
+}
+.integrity-signal {
+  padding: 14px 16px;
+  border: 1px solid #ebe5f4;
+  border-radius: 10px;
+  background: #fff;
+  display: grid;
+  gap: 8px;
+  text-align: left;
 }
 .review-final {
   position: sticky;

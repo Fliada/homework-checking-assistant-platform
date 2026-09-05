@@ -32,6 +32,17 @@ import {
 import type { Assignment, Submission } from '../types';
 
 const complete = (status: string) => ['confirmed', 'feedback_sent'].includes(status);
+const processingSteps = ['Задание', 'Сдано', 'Загрузка', 'AI-анализ', 'Проверка', 'Результат'] as const;
+const processingRank = (status?: string) => {
+  if (!status || status === 'not_submitted') return 0;
+  if (status === 'submitted') return 1;
+  if (status === 'ingesting') return 2;
+  if (status === 'llm_processing' || status === 'pre_review_running') return 3;
+  if (['draft_ready', 'needs_human', 'assigned', 'in_review', 'configuration_error'].includes(status)) return 4;
+  if (complete(status)) return 6;
+  if (['failed', 'error'].includes(status)) return 2;
+  return 1;
+};
 export function Ledger() {
   const data = useData();
   const { run, busy } = useAction();
@@ -636,16 +647,16 @@ export function Student() {
                 </span>
               </div>
               <div className="timeline">
-                {['Задание', 'Сдано', 'Проверка', 'Результат'].map((t, i) => (
-                  <div
-                    key={t}
-                    className={
-                      i === 0 || (latest && (i < 3 || complete(latest.status))) ? 'done' : ''
-                    }
-                  >
-                    {t}
-                  </div>
-                ))}
+                {processingSteps.map((t, i) => {
+                  const rank = latest ? processingRank(latest.status) : 0;
+                  const done = i === 0 || rank > i || (i === 5 && complete(latest?.status || ''));
+                  const current = !!latest && rank === i + 1 && !complete(latest.status);
+                  return (
+                    <div key={t} className={[done ? 'done' : '', current ? 'current' : ''].filter(Boolean).join(' ')}>
+                      {t}
+                    </div>
+                  );
+                })}
               </div>
               {latest?.error && <div className="notice yellow">{latest.error}</div>}
               {latest && (

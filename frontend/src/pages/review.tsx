@@ -33,7 +33,22 @@ import {
   segmentAnnotations,
   type AnnotationCategory,
 } from '../annotationCategories';
-import type { Annotation, Artifact, CriterionResult, Review, Rubric, SourceAnchor } from '../types';
+import { AgentNotes } from './courses';
+import {
+  highlightMatchesSegment,
+  segmentMatchesCompletion,
+  shouldShowSegment,
+  visibleHighlights,
+  type SourceFilter,
+} from '../agentNotes';
+import { highlightLine, isCodePath, languageForPath } from '../syntaxHighlight';
+import {
+  expandArtifactLines,
+  highlightMatchesLine,
+  lineAnnotations,
+  lineCategories,
+} from '../sourceLines';
+import type { Annotation, Artifact, CriterionResult, IntegrityHighlight, Review, Rubric, SourceAnchor } from '../types';
 
 export function ReviewWorkspace() {
   const { id } = useParams();
@@ -52,6 +67,7 @@ export function ReviewWorkspace() {
   const [confirm, setConfirm] = useState(false);
   const [feedback, setFeedback] = useState('');
   const [feedbackDirty, setFeedbackDirty] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   useEffect(() => {
     setFeedback(review?.feedback || '');
     setFeedbackDirty(false);
@@ -82,23 +98,36 @@ export function ReviewWorkspace() {
   const canDecide =
     !locked && (review.reviewerId === data.user.id || ['admin', 'owner'].includes(data.user.role));
   const file = submission.artifacts.find((f) => f.id === fileId) || submission.artifacts[0];
-  const max = review.rubric.criteria.reduce((n, c) => n + c.maxScore, 0);
-  const rawScore = review.results.reduce((n, r) => n + (r.finalScore ?? 0), 0);
-  const final = Math.max(0, rawScore - (review.latePenalty || 0));
-  const remaining = review.results.filter((r) => !r.confirmed || r.finalScore === null).length;
-  const pending = review.annotations.filter((a) => a.status === 'pending').length;
+  const fileHighlights = visibleHighlights(review.integrity.highlights, file?.id || '', sourceFilter);
+  const lineRows = file && isCodePath(file.path) ? expandArtifactLines(file) : [];
   const selectedAnchor: SourceAnchor | null =
     file && selection
-      ? {
-          artifactId: file.id,
-          path: file.path,
-          start: file.segments[selection.start]?.anchor || '',
-          end: file.segments[selection.end]?.anchor || '',
-          quote: file.segments
-            .slice(selection.start, selection.end + 1)
-            .map((s) => s.text)
-            .join('\n'),
-        }
+      ? lineRows.length
+        ? (() => {
+            const startRow = lineRows[selection.start];
+            const endRow = lineRows[selection.end] || startRow;
+            if (!startRow) return null;
+            return {
+              artifactId: file.id,
+              path: file.path,
+              start: startRow.anchor,
+              end: endRow.anchor,
+              quote: lineRows
+                .slice(selection.start, selection.end + 1)
+                .map((row) => row.text)
+                .join('\n'),
+            };
+          })()
+        : {
+            artifactId: file.id,
+            path: file.path,
+            start: file.segments[selection.start]?.anchor || '',
+            end: file.segments[selection.end]?.anchor || '',
+            quote: file.segments
+              .slice(selection.start, selection.end + 1)
+              .map((s) => s.text)
+              .join('\n'),
+          }
       : null;
   function jump(anchor: SourceAnchor) {
     const target = submission!.artifacts.find(
@@ -106,6 +135,23 @@ export function ReviewWorkspace() {
     );
     if (!target) return;
     setFileId(target.id);
+    const rows = isCodePath(target.path) ? expandArtifactLines(target) : [];
+    const lineMatch = anchor.start.match(/^line:(\d+)/);
+    if (rows.length && lineMatch) {
+      const lineNo = Number(lineMatch[1]);
+      const rowIndex = rows.findIndex((row) => row.lineNo === lineNo);
+      if (rowIndex >= 0) {
+        setSelection({ start: rowIndex, end: rowIndex });
+        setTimeout(
+          () =>
+            document
+              .getElementById(`line-${target.id}-${lineNo}`)
+              ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+          30,
+        );
+        return;
+      }
+    }
     const start = target.segments.findIndex((s) => s.anchor === anchor.start);
     const end = target.segments.findIndex((s) => s.anchor === anchor.end);
     if (start >= 0) {
@@ -119,6 +165,12 @@ export function ReviewWorkspace() {
       );
     }
   }
+  const max = review.rubric.criteria.reduce((n, c) => n + c.maxScore, 0);
+  const rawScore = review.results.reduce((n, r) => n + (r.finalScore ?? 0), 0);
+  const final = Math.max(0, rawScore - (review.latePenalty || 0));
+  const remaining = review.results.filter((r) => !r.confirmed || r.finalScore === null).length;
+  const pending = review.annotations.filter((a) => a.status === 'pending').length;
+  const aiScore = review.integrity.aiScore ?? review.integrity.ai_score;
   async function compose() {
     const result = await run<{ feedback: string }>(
       `/reviews/${id}/feedback/compose`,
@@ -223,6 +275,25 @@ export function ReviewWorkspace() {
                 </button>
               ))}
             </div>
+            <div className="source-filters" aria-label="Фильтры просмотра">
+              {(
+                [
+                  ['all', 'все'],
+                  ['signals', 'только сигналы'],
+                  ['completion', 'только «завершение»'],
+                  ['open', 'скрыть подтверждённые'],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={sourceFilter === key ? 'active' : ''}
+                  onClick={() => setSourceFilter(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             {file ? (
               <>
                 <div className="source-toolbar">
@@ -251,6 +322,10 @@ export function ReviewWorkspace() {
                   }
                   onRangeSelect={(start, end) => setSelection({ start, end })}
                   annotations={review.annotations}
+                  highlights={fileHighlights}
+                  sourceFilter={sourceFilter}
+                  language={languageForPath(file.path)}
+                  syntax={isCodePath(file.path)}
                 />
                 {selectedAnchor && canDecide && (
                   <div
@@ -333,6 +408,13 @@ export function ReviewWorkspace() {
               По критериям: {rawScore} · Снижение за просрочку: {review.latePenalty} · Итог: {final}
             </div>
           )}
+          <Card>
+            <div className="card-head">
+              <h3>Что заметил агент</h3>
+              <Help text="Замечания LLM по критериям и сигналы проверки на ИИ (Codect + ru-ai-text-detector). На балл не влияют без решения ревьюера." />
+            </div>
+            <AgentNotes review={review} />
+          </Card>
           <Card>
             <div className="review-score">
               <div>
@@ -544,11 +626,132 @@ export function ReviewWorkspace() {
               </div>
             )}
             {tab === 'integrity' && (
-              <div className="integrity-placeholder">
-                <ShieldQuestion size={32} color="#a486c5" />
-                <Badge tone="purple">Не подключено</Badge>
-                <h3>Выявление использования ИИ</h3>
-                <p>Результатов анализа пока нет.</p>
+              <div className="integrity-panel">
+                {review.integrity.status === 'unavailable' ? (
+                  <div className="integrity-placeholder">
+                    <ShieldQuestion size={32} color="#a486c5" />
+                    <Badge tone="yellow">Недоступно</Badge>
+                    <h3>Выявление использования ИИ</h3>
+                    <p>{review.integrity.message || 'Codect не установлен на сервере.'}</p>
+                  </div>
+                ) : !review.integrity.signals?.length ? (
+                  <div className="integrity-placeholder">
+                    <ShieldQuestion size={32} color="#a486c5" />
+                    <Badge tone="green">Чисто</Badge>
+                    <h3>Выявление использования ИИ</h3>
+                    <p>{review.integrity.message || 'Явных признаков ИИ-кода не обнаружено.'}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="row between section-gap">
+                      <div>
+                        <Badge tone={review.integrity.level === 'high' ? 'red' : 'yellow'}>
+                          {review.integrity.level === 'high'
+                            ? 'Высокий риск'
+                            : review.integrity.level === 'medium'
+                              ? 'Средний риск'
+                              : 'Низкий риск'}
+                        </Badge>
+                        {aiScore != null && (
+                          <p className="integrity-overall">
+                            Итоговая оценка ИИ: <strong>{(aiScore * 100).toFixed(0)}%</strong>
+                          </p>
+                        )}
+                        <p className="small muted">{review.integrity.message}</p>
+                      </div>
+                    </div>
+                    {review.integrity.signals.map((signal) => {
+                      const start = signal.startLine ?? signal.start_line ?? 0;
+                      const end = signal.endLine ?? signal.end_line ?? start;
+                      const name = signal.blockName ?? signal.block_name ?? signal.path;
+                      return (
+                        <div className="integrity-signal" key={signal.id}>
+                          <div className="row between">
+                            <button
+                              type="button"
+                              className="anchor-link"
+                              onClick={() =>
+                                jump({
+                                  artifactId: signal.artifactId || signal.artifact_id || '',
+                                  path: signal.path,
+                                  start:
+                                    signal.kind === 'text'
+                                      ? `paragraph:${start}`
+                                      : `line:${start}`,
+                                  end:
+                                    signal.kind === 'text' ? `paragraph:${end}` : `line:${end}`,
+                                  quote: signal.message,
+                                })
+                              }
+                            >
+                              {signal.path}:{start}
+                              {end !== start ? `–${end}` : ''}
+                            </button>
+                            <Badge
+                              tone={
+                                signal.status === 'accepted'
+                                  ? 'green'
+                                  : signal.status === 'rejected'
+                                    ? 'red'
+                                    : 'yellow'
+                              }
+                            >
+                              {signal.status === 'pending'
+                                ? 'Ожидает решения'
+                                : signal.status === 'accepted'
+                                  ? 'Подтверждено'
+                                  : signal.status === 'rejected'
+                                    ? 'Отклонено'
+                                    : signal.status}
+                            </Badge>
+                          </div>
+                          <p className="small">{name}</p>
+                          <p>{signal.message}</p>
+                          <p className="small muted">
+                            {signal.classification}
+                            {signal.aiScore ?? signal.ai_score
+                              ? ` · AI ${((signal.aiScore ?? signal.ai_score ?? 0) * 100).toFixed(0)}%`
+                              : ''}
+                          </p>
+                          {!locked && canDecide && signal.status === 'pending' && (
+                            <div className="row">
+                              <Button
+                                className="sm"
+                                variant="ghost"
+                                busy={busy}
+                                onClick={() =>
+                                  run(
+                                    `/reviews/${id}/integrity/${signal.id}/decision`,
+                                    { status: 'rejected' },
+                                    'POST',
+                                    'Сигнал отклонён',
+                                  )
+                                }
+                              >
+                                Не ИИ
+                              </Button>
+                              <Button
+                                className="sm"
+                                variant="primary"
+                                busy={busy}
+                                onClick={() =>
+                                  run(
+                                    `/reviews/${id}/integrity/${signal.id}/decision`,
+                                    { status: 'accepted' },
+                                    'POST',
+                                    'Сигнал подтверждён',
+                                  )
+                                }
+                              >
+                                Подтвердить
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             )}
           </Card>
@@ -667,30 +870,48 @@ function ArtifactView({
   onSelect,
   onRangeSelect,
   annotations,
+  highlights,
+  sourceFilter,
+  language,
+  syntax,
 }: {
   file: Artifact;
   selection: { start: number; end: number } | null;
   onSelect: (index: number, shift: boolean) => void;
   onRangeSelect: (start: number, end: number) => void;
   annotations: Annotation[];
+  highlights: IntegrityHighlight[];
+  sourceFilter: SourceFilter;
+  language: string | null;
+  syntax: boolean;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const rangeSelected = useRef(false);
+  const lineMode = isCodePath(file.path);
+  const rows = lineMode ? expandArtifactLines(file) : [];
   function captureSelection() {
     const native = window.getSelection();
     if (!native || native.isCollapsed || !root.current) return;
-    function segment(node: Node | null) {
+    function rowIndex(node: Node | null) {
       const element = node instanceof Element ? node : node?.parentElement;
-      const line = element?.closest<HTMLElement>('[data-segment-index]');
-      return line && root.current?.contains(line) ? Number(line.dataset.segmentIndex) : null;
+      const line = element?.closest<HTMLElement>('[data-line-index]');
+      return line && root.current?.contains(line) ? Number(line.dataset.lineIndex) : null;
     }
-    const from = segment(native.anchorNode),
-      to = segment(native.focusNode);
+    const from = rowIndex(native.anchorNode),
+      to = rowIndex(native.focusNode);
     if (from === null || to === null) return;
     rangeSelected.current = true;
     onRangeSelect(Math.min(from, to), Math.max(from, to));
   }
-  return file.segments.length ? (
+  if (!file.segments.length) {
+    return (
+      <Empty
+        title="Предпросмотр недоступен"
+        detail="Откройте исходный PR для ручной проверки файла."
+      />
+    );
+  }
+  return (
     <>
       <div className="annotation-legend" aria-label="Цвета категорий">
         {Object.entries(annotationCategories).map(([key, label]) => (
@@ -699,10 +920,16 @@ function ArtifactView({
             {label}
           </span>
         ))}
+        {highlights.some((h) => h.status === 'pending') && (
+          <span className="category-label category-ai">
+            <span className="category-dot" />
+            сигнал ИИ
+          </span>
+        )}
       </div>
       <div
         ref={root}
-        className="source-code"
+        className={`source-code${syntax ? ' syntax-highlighted' : ''}`}
         aria-label={`Содержимое ${file.path}`}
         onMouseDown={() => {
           rangeSelected.current = false;
@@ -710,63 +937,136 @@ function ArtifactView({
         onMouseUp={captureSelection}
         onKeyUp={captureSelection}
       >
-        {file.segments.map((segment, i) => {
-          const linked = segmentAnnotations(file, i, annotations);
-          const categories = [...new Set(linked.map((a) => annotationCategory(a.category)))];
-          const category = Object.keys(annotationCategories).find((c) =>
-            categories.includes(c as AnnotationCategory),
-          );
-          const selected = !!selection && i >= selection.start && i <= selection.end;
-          return (
-            <div
-              role="button"
-              tabIndex={0}
-              id={`segment-${file.id}-${i}`}
-              data-segment-index={i}
-              key={segment.id || i}
-              className={`source-line ${category ? `annotated category-${category}` : ''} ${selected ? 'selected' : ''}`}
-              onClick={(e) => {
-                if (rangeSelected.current) {
-                  rangeSelected.current = false;
-                  return;
-                }
-                onSelect(i, e.shiftKey);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onSelect(i, e.shiftKey);
-                }
-              }}
-              aria-pressed={selected}
-            >
-              <span className="line-no" title={segment.anchor}>
-                {segment.anchor
-                  .replace('line:', '')
-                  .replace('paragraph:', '¶ ')
-                  .replace('page:', 'с. ')}
-                <span className="line-category-dots">
-                  {categories.map((c) => (
-                    <i
-                      key={c}
-                      className={`category-dot category-${c}`}
-                      title={annotationCategories[c]}
-                      aria-label={annotationCategories[c]}
-                    />
-                  ))}
-                </span>
-              </span>
-              <span className="source-text">{segment.text || ' '}</span>
-            </div>
-          );
-        })}
+        {lineMode
+          ? rows.map((row, i) => {
+              const linked = lineAnnotations(file, row, annotations);
+              const categories = lineCategories(file, row, annotations);
+              const category = Object.keys(annotationCategories).find((c) =>
+                categories.includes(c as AnnotationCategory),
+              );
+              const aiHighlight = highlights.find((h) => highlightMatchesLine(h, row.lineNo));
+              const linkedCompletion = linked.some((a) =>
+                /graceful|shutdown|context|заверш/i.test(a.message),
+              );
+              if (
+                !shouldShowSegment(row.text, row.anchor, highlights, sourceFilter, linkedCompletion)
+              ) {
+                return null;
+              }
+              const selected = !!selection && i >= selection.start && i <= selection.end;
+              return (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  id={`line-${file.id}-${row.lineNo}`}
+                  data-line-index={i}
+                  key={row.key}
+                  className={`source-line ${category ? `annotated category-${category}` : ''} ${aiHighlight ? `ai-highlight ai-${aiHighlight.level}` : ''} ${selected ? 'selected' : ''}`}
+                  title={aiHighlight?.message}
+                  onClick={(e) => {
+                    if (rangeSelected.current) {
+                      rangeSelected.current = false;
+                      return;
+                    }
+                    onSelect(i, e.shiftKey);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelect(i, e.shiftKey);
+                    }
+                  }}
+                  aria-pressed={selected}
+                >
+                  <span className="line-no" title={row.anchor}>
+                    {row.lineNo}
+                    <span className="line-category-dots">
+                      {categories.map((c) => (
+                        <i
+                          key={c}
+                          className={`category-dot category-${c}`}
+                          title={annotationCategories[c]}
+                          aria-label={annotationCategories[c]}
+                        />
+                      ))}
+                    </span>
+                  </span>
+                  <span
+                    className="source-text"
+                    {...(syntax && language
+                      ? { dangerouslySetInnerHTML: { __html: highlightLine(row.text || ' ', language) } }
+                      : { children: row.text || ' ' })}
+                  />
+                </div>
+              );
+            })
+          : file.segments.map((segment, i) => {
+              const linked = segmentAnnotations(file, i, annotations);
+              const categories = [...new Set(linked.map((a) => annotationCategory(a.category)))];
+              const category = Object.keys(annotationCategories).find((c) =>
+                categories.includes(c as AnnotationCategory),
+              );
+              const aiHighlight = highlights.find((h) => highlightMatchesSegment(h, segment.anchor));
+              const linkedCompletion = linked.some((a) =>
+                /graceful|shutdown|context|заверш/i.test(a.message),
+              );
+              if (
+                !shouldShowSegment(segment.text, segment.anchor, highlights, sourceFilter, linkedCompletion)
+              ) {
+                return null;
+              }
+              const selected = !!selection && i >= selection.start && i <= selection.end;
+              return (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  id={`segment-${file.id}-${i}`}
+                  data-line-index={i}
+                  key={segment.id || i}
+                  className={`source-line ${category ? `annotated category-${category}` : ''} ${aiHighlight ? `ai-highlight ai-${aiHighlight.level}` : ''} ${selected ? 'selected' : ''}`}
+                  title={aiHighlight?.message}
+                  onClick={(e) => {
+                    if (rangeSelected.current) {
+                      rangeSelected.current = false;
+                      return;
+                    }
+                    onSelect(i, e.shiftKey);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelect(i, e.shiftKey);
+                    }
+                  }}
+                  aria-pressed={selected}
+                >
+                  <span className="line-no" title={segment.anchor}>
+                    {segment.anchor
+                      .replace('line:', '')
+                      .replace('paragraph:', '¶ ')
+                      .replace('page:', 'с. ')}
+                    <span className="line-category-dots">
+                      {categories.map((c) => (
+                        <i
+                          key={c}
+                          className={`category-dot category-${c}`}
+                          title={annotationCategories[c]}
+                          aria-label={annotationCategories[c]}
+                        />
+                      ))}
+                    </span>
+                  </span>
+                  <span
+                    className="source-text"
+                    {...(syntax && language
+                      ? { dangerouslySetInnerHTML: { __html: highlightLine(segment.text || ' ', language) } }
+                      : { children: segment.text || ' ' })}
+                  />
+                </div>
+              );
+            })}
       </div>
     </>
-  ) : (
-    <Empty
-      title="Предпросмотр недоступен"
-      detail="Откройте исходный PR для ручной проверки файла."
-    />
   );
 }
 

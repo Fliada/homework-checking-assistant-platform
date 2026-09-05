@@ -57,6 +57,52 @@ def late_penalty(db,r):
         return round(min(score,amount),2)
     except (ValueError,TypeError): return 0
 
+def integrity_highlight_json(item: dict) -> dict:
+    return {
+        'id': item.get('id', ''),
+        'signalId': item.get('signal_id', ''),
+        'artifactId': item.get('artifact_id', ''),
+        'path': item.get('path', ''),
+        'kind': item.get('kind', 'code'),
+        'startLine': item.get('start_line', 0),
+        'endLine': item.get('end_line', 0),
+        'aiScore': item.get('ai_score'),
+        'level': item.get('level'),
+        'status': item.get('status', 'pending'),
+        'message': item.get('message', ''),
+        'reasons': item.get('reasons', []),
+    }
+
+def integrity_json(integrity: dict) -> dict:
+    ai_score = integrity.get('ai_score')
+    return {
+        'status': integrity.get('status', 'unavailable'),
+        'decision': integrity.get('decision', 'deferred'),
+        'level': integrity.get('level'),
+        'message': integrity.get('message', ''),
+        'aiScore': ai_score,
+        'signals': [integrity_signal_json(item) for item in integrity.get('signals', [])],
+        'highlights': [integrity_highlight_json(item) for item in integrity.get('highlights', [])],
+    }
+
+def integrity_signal_json(signal: dict) -> dict:
+    return {
+        'id': signal.get('id', ''),
+        'artifactId': signal.get('artifact_id', ''),
+        'path': signal.get('path', ''),
+        'kind': signal.get('kind', 'code'),
+        'blockKind': signal.get('block_kind', ''),
+        'blockName': signal.get('block_name', ''),
+        'startLine': signal.get('start_line', 0),
+        'endLine': signal.get('end_line', 0),
+        'classification': signal.get('classification', ''),
+        'aiScore': signal.get('ai_score'),
+        'humanScore': signal.get('human_score'),
+        'level': signal.get('level'),
+        'status': signal.get('status', 'pending'),
+        'message': signal.get('message', ''),
+    }
+
 def review_json(db, r, student=False):
     config = db.get(AgentConfig, r.agent_config_version_id) if r.agent_config_version_id else None
     results = [{'criterionId': c['criterion_id'], 'suggestedScore': None if student else c.get('suggested_score'), 'finalScore': c.get('final_score'), 'confidence': 0 if student else c.get('confidence', 0), 'abstained': False if student else c.get('abstained', False), 'reason': c.get('note', '') if student else c.get('reason', c.get('reasoning', '')), 'confirmed': c.get('confirmed', False), 'note': c.get('note', '')} for c in r.criterion_results]
@@ -67,7 +113,8 @@ def review_json(db, r, student=False):
         if not isinstance(anchor, dict): anchor = {}
         annotations.append({'id': a['id'], 'criterionId': a.get('criterion_id'), 'category': a.get('category', 'comment'), 'source': a.get('source', 'ai'), 'status': a.get('status', 'pending'), 'message': a.get('message', ''), 'visibleToStudent': a.get('visible_to_student', True), 'anchor': {'artifactId': anchor.get('artifact_id', ''), 'path': anchor.get('path', ''), 'start': str(anchor.get('start', '')), 'end': str(anchor.get('end', '')), 'quote': anchor.get('quote', '')}})
     minutes = round((r.active_seconds or 0) / 60, 1)
-    return {'id': r.id, 'submissionId': r.submission_id, 'reviewerId': r.reviewer_id, 'status': r.status, 'configVersion': config.version if config else None, 'rubric': rubric_json(db.get(Rubric, r.rubric_id)), 'results': results, 'annotations': annotations, 'feedback': r.feedback, 'feedbackStale': r.feedback_revision != r.revision, 'finalScore': r.final_score, 'draftScore': None if student else r.draft_score, 'confirmedAt': iso(r.confirmed_at), 'activeMinutes': minutes, 'integrity': {'status': 'mock', 'decision': 'deferred', 'level': None, 'message': 'Выявление использования ИИ будет подключено позже.'}, 'revision': r.revision, 'latePenalty': late_penalty(db,r), 'scoreBeforePenalty': sum(c.get('final_score') or 0 for c in r.criterion_results)}
+    integrity = r.integrity or {'status': 'unavailable', 'decision': 'deferred', 'level': None, 'message': 'Анализ не выполнялся.', 'signals': [], 'highlights': []}
+    return {'id': r.id, 'submissionId': r.submission_id, 'reviewerId': r.reviewer_id, 'status': r.status, 'configVersion': config.version if config else None, 'rubric': rubric_json(db.get(Rubric, r.rubric_id)), 'results': results, 'annotations': annotations, 'feedback': r.feedback, 'feedbackStale': r.feedback_revision != r.revision, 'finalScore': r.final_score, 'draftScore': None if student else r.draft_score, 'confirmedAt': iso(r.confirmed_at), 'activeMinutes': minutes, 'integrity': integrity_json(integrity), 'revision': r.revision, 'latePenalty': late_penalty(db,r), 'scoreBeforePenalty': sum(c.get('final_score') or 0 for c in r.criterion_results)}
 
 def model_json(m, admin=False):
     d, c = m.default_params, m.capabilities

@@ -18,6 +18,7 @@ import {
 } from '../components/ui';
 import { SimilarityPanel } from './similarity';
 import type { Course, Review } from '../types';
+import { collectAgentNotes, type AgentNote } from '../agentNotes';
 
 type Counts = {
   completed?: number;
@@ -26,7 +27,7 @@ type Counts = {
   missing?: number;
   overdue?: number;
 };
-type AgentNote = { text: string; detail: string; tone: string };
+type AgentNoteLegacy = { text: string; detail: string; tone: string };
 type ProgressRow = {
   studentId: string;
   studentName: string;
@@ -40,7 +41,7 @@ type ProgressRow = {
   score: number | null;
   maxScore: number | null;
   lateDays: number | null;
-  agentNotes: AgentNote[];
+  agentNotes: AgentNoteLegacy[];
   similarityComments: string[];
 };
 type HomeworkProgress = {
@@ -72,42 +73,14 @@ export type CourseProgress = {
   }[];
   weakCriteria: { assignment: string; title: string; averagePercent: number; count: number }[];
 };
-export function AgentNotes({ notes, review }: { notes?: AgentNote[]; review?: Review }) {
-  const items =
-    notes ??
-    (review
-      ? [
-          ...review.results
-            .filter(
-              (r) =>
-                !r.confirmed &&
-                !['confirmed', 'feedback_sent'].includes(review.status) &&
-                (r.abstained || (r.confidence > 0 && r.confidence < 0.6)),
-            )
-            .map((r) => ({
-              text: `${r.abstained ? 'Нужно решение человека' : 'Низкая уверенность'}: ${review.rubric.criteria.find((c) => c.id === r.criterionId)?.title || 'критерий'}`,
-              detail: r.reason,
-              tone: 'yellow',
-            })),
-          ...review.annotations
-            .filter((a) => a.source === 'ai' && a.status !== 'rejected')
-            .map((a) => ({ text: a.message, detail: a.message, tone: 'blue' })),
-        ]
-      : []);
-  const visible = items.length
-    ? items
-    : review?.results
-        .filter((r) => r.reason)
-        .slice(0, 2)
-        .map((r) => ({
-          text: r.reason,
-          detail: r.reason,
-          tone: r.confidence >= 0.8 ? 'green' : 'blue',
-        })) || [];
+export function AgentNotes({ notes, review }: { notes?: AgentNoteLegacy[]; review?: Review }) {
+  const items: AgentNote[] = notes?.length
+    ? notes.map((n) => ({ ...n, tone: (n.tone as AgentNote['tone']) || 'blue' }))
+    : collectAgentNotes(review);
   return (
     <div className="agent-notes">
-      {visible.length ? (
-        visible.slice(0, 3).map((n, i) => (
+      {items.length ? (
+        items.slice(0, 4).map((n, i) => (
           <span key={i} title={n.detail}>
             <Badge tone={n.tone}>{n.text.length > 150 ? `${n.text.slice(0, 150)}…` : n.text}</Badge>
           </span>

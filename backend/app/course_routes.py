@@ -110,13 +110,17 @@ def agent_notes(db, review):
     notes = []
     rubric = db.get(Rubric, review.rubric_id)
     titles = {c['id']: c['title'] for c in rubric.criteria} if rubric else {}
+    criterion_tones = ['yellow', 'blue', 'purple', 'green']
+    criterion_index = 0
     for c in review.criterion_results:
         title = titles.get(c.get('criterion_id'), 'Критерий')
         if c.get('confirmed') or review.status in DONE: continue
         if c.get('abstained'):
-            notes.append({'tone': 'yellow', 'text': f'Нужно решение человека: {title}', 'detail': c.get('reason', c.get('reasoning', ''))})
+            notes.append({'tone': criterion_tones[criterion_index % len(criterion_tones)], 'text': f'Нужно решение человека: {title}', 'detail': c.get('reason', c.get('reasoning', ''))})
+            criterion_index += 1
         elif 0 < c.get('confidence', 0) < .6:
-            notes.append({'tone': 'yellow', 'text': f'Низкая уверенность: {title}', 'detail': c.get('reason', c.get('reasoning', ''))})
+            notes.append({'tone': criterion_tones[criterion_index % len(criterion_tones)], 'text': f'Низкая уверенность: {title}', 'detail': c.get('reason', c.get('reasoning', ''))})
+            criterion_index += 1
     for a in review.annotations:
         if a.get('source', 'ai') == 'ai' and a.get('status') != 'rejected' and a.get('message'):
             notes.append({'tone': 'blue', 'text': a['message'][:180], 'detail': a['message']})

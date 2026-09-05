@@ -126,7 +126,54 @@ export interface Review {
   revision?: number;
   latePenalty?: number;
   scoreBeforePenalty?: number;
-  integrity: { status: 'mock'; decision: string; level: string | null; message: string };
+  integrity: {
+    status: string;
+    decision: string;
+    level: string | null;
+    message: string;
+    aiScore?: number | null;
+    ai_score?: number | null;
+    signals?: IntegritySignal[];
+    highlights?: IntegrityHighlight[];
+  };
+}
+export interface IntegrityHighlight {
+  id: string;
+  signalId?: string;
+  signal_id?: string;
+  artifactId?: string;
+  artifact_id?: string;
+  path: string;
+  kind: string;
+  startLine?: number;
+  start_line?: number;
+  endLine?: number;
+  end_line?: number;
+  aiScore?: number;
+  ai_score?: number;
+  level: string;
+  status: string;
+  message: string;
+  reasons?: string[];
+}
+export interface IntegritySignal {
+  id: string;
+  artifactId?: string;
+  artifact_id?: string;
+  path: string;
+  kind: string;
+  blockName?: string;
+  block_name?: string;
+  startLine?: number;
+  start_line?: number;
+  endLine?: number;
+  end_line?: number;
+  classification: string;
+  aiScore?: number;
+  ai_score?: number;
+  level: string;
+  status: string;
+  message: string;
 }
 export interface ModelEndpoint {
   id: string;
@@ -257,8 +304,9 @@ export const statusLabels: Record<string, string> = {
   not_submitted: 'Не сдано',
   submitted: 'Отправлено',
   ingesting: 'Загрузка файлов',
+  llm_processing: 'AI-анализ',
   ready: 'Готово к проверке',
-  pre_review_running: 'Готовится черновик',
+  pre_review_running: 'AI-анализ',
   draft_ready: 'Черновик готов',
   assigned: 'Назначено',
   in_review: 'На проверке',

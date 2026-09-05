@@ -222,7 +222,7 @@ def test_valid_review_is_anchored_and_records_actual_params(setup_review):
     assert result["status"] == "draft_ready"
     assert result["draft_total"] == 2
     assert result["criteria"][0]["evidence"][0]["valid"] is True
-    assert result["integrity"]["status"] == "mocked"
+    assert "integrity" not in result
     call = result["model_calls"][0]
     assert call["model_id"] == "local" and call["input_tokens"] == 100
     assert call["effective_params"]["temperature"] == 0.1
@@ -664,3 +664,13 @@ def test_lm_studio_schema_validation_retries_without_leaking_response(setup_revi
     assert result['model_calls'][0]['error_code'] == 'invalid_criterion_schema'
     assert result['model_calls'][0]['validation_errors'][0]['field'] == 'confidence'
     assert 'SECRET-INVALID-VALUE' not in json.dumps(result)
+
+
+def test_channel_error_maps_to_actionable_code(setup_review):
+    def handler(request):
+        return httpx.Response(500, json={"error": {"message": "Channel Error", "type": "server_error"}})
+
+    result = run_with_transport(setup_review, handler)
+    assert result["status"] == "needs_human"
+    assert result["error"] == "upstream_channel_error"
+    assert result["model_calls"][0]["error_code"] == "upstream_channel_error"

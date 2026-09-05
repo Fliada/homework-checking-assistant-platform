@@ -449,3 +449,60 @@ def test_annotation_category_can_be_changed_without_losing_anchor(client):
     updated = changed.json()['annotations'][-1]
     assert updated['category'] == 'requirement'
     assert updated['anchor'] == annotation['anchor']
+
+def test_integrity_signal_decision_persists(client):
+    auth = headers(client)
+    signal_id = 'demo-ai-signal-1'
+    with SessionLocal() as db:
+        review = db.get(Review, 'demo-review-1')
+        review.integrity = {
+            'status': 'completed',
+            'decision': 'pending',
+            'level': 'medium',
+            'message': 'Найдено сигналов: 1.',
+            'ai_score': 0.6,
+            'signals': [{
+                'id': signal_id,
+                'artifact_id': 'demo-artifact-1',
+                'path': 'cmd/main.go',
+                'kind': 'code',
+                'block_name': 'main',
+                'start_line': 9,
+                'end_line': 15,
+                'classification': 'неопределённо',
+                'ai_score': 0.6,
+                'level': 'medium',
+                'status': 'pending',
+                'message': 'p(ИИ)=0.60',
+            }],
+            'highlights': [{
+                'id': 'demo-ai-highlight-1',
+                'signal_id': signal_id,
+                'artifact_id': 'demo-artifact-1',
+                'path': 'cmd/main.go',
+                'kind': 'code',
+                'start_line': 9,
+                'end_line': 9,
+                'ai_score': 0.6,
+                'level': 'medium',
+                'status': 'pending',
+                'message': 'func main()',
+            }],
+        }
+        db.commit()
+    response = client.post(
+        f'/api/v1/reviews/demo-review-1/integrity/{signal_id}/decision',
+        json={'status': 'accepted'},
+        headers=auth,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['integrity']['signals'][0]['status'] == 'accepted'
+    assert payload['integrity']['highlights'][0]['status'] == 'accepted'
+    bootstrap = client.get('/api/v1/bootstrap', headers=auth).json()
+    saved = next(item for item in bootstrap['reviews'] if item['id'] == 'demo-review-1')
+    assert saved['integrity']['signals'][0]['status'] == 'accepted'
+    with SessionLocal() as db:
+        stored = db.get(Review, 'demo-review-1').integrity
+        assert stored['signals'][0]['status'] == 'accepted'
+        assert stored['highlights'][0]['status'] == 'accepted'

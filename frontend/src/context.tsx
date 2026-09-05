@@ -1,6 +1,29 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { api, queryClient } from './api';
-import type { Bootstrap } from './types';
+import type { Bootstrap, Review } from './types';
+
+function isReview(value: unknown): value is Review {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    'id' in value &&
+    'integrity' in value &&
+    'results' in value
+  );
+}
+
+export function mergeReviewToBootstrap(review: Review) {
+  queryClient.setQueryData<Bootstrap>(['bootstrap'], (old) => {
+    if (!old) return old;
+    const exists = old.reviews.some((item) => item.id === review.id);
+    return {
+      ...old,
+      reviews: exists
+        ? old.reviews.map((item) => (item.id === review.id ? review : item))
+        : [...old.reviews, review],
+    };
+  });
+}
 export const DataContext = createContext<Bootstrap | null>(null);
 export function useData() {
   const data = useContext(DataContext);
@@ -50,6 +73,7 @@ export function useAction() {
     setBusy(true);
     try {
       const result = await api<T>(path, body, method);
+      if (isReview(result)) mergeReviewToBootstrap(result);
       await Promise.all(
         ['bootstrap', 'courses', 'course-progress', 'similarity'].map((key) =>
           queryClient.invalidateQueries({ queryKey: [key] }),

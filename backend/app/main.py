@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .auth import *
 from .config import settings
+PROCESSING_STATUSES = ['submitted', 'ingesting', 'llm_processing', 'pre_review_running']
 from .db import Base, engine, get_db, SessionLocal
 from .models import *
 from .serializers import *
@@ -59,7 +60,7 @@ async def conflict_error(request, exc):
 @app.get('/health')
 @app.get(P+'/health')
 def health():
-    return {'status': 'ok', 'debug': settings.debug and settings.seed_demo, 'mode': settings.app_env, 'integrity': 'mock'}
+    return {'status': 'ok', 'debug': settings.debug and settings.seed_demo, 'mode': settings.app_env, 'integrity': 'codect'}
 
 def audit(db, actor, action, entity, entity_id, payload=None):
     db.add(AuditEvent(actor_id=actor.id if actor else None, action=action, entity_type=entity, entity_id=entity_id, payload_safe=payload or {}))
@@ -97,7 +98,7 @@ def edit_review(db, user, rid):
     if not review: fail(404, 'not_found', 'Проверка не найдена.')
     review_scope(db, user, review, True)
     if review.status in ['confirmed','superseded']: fail(409, 'review_locked', 'Подтверждённая проверка неизменяема.')
-    if review.status in ['ingesting', 'pre_review_running', 'submitted']: fail(409, 'review_busy', 'Дождитесь завершения обработки.')
+    if review.status in PROCESSING_STATUSES: fail(409, 'review_busy', 'Дождитесь завершения обработки.')
     return review
 
 def changed(review):
@@ -588,7 +589,7 @@ def submit_github(body: dict, request: Request, background: BackgroundTasks, use
     pr_url=body.get('prUrl',body.get('url',''))
     try: validate_pr_url(pr_url)
     except Exception: fail(422,'invalid_pr','Укажите GitHub Pull Request: https://github.com/owner/repository/pull/123')
-    existing=db.scalar(select(Submission).where(Submission.assignment_id==assignment.id,Submission.student_id==user.id,Submission.status.in_(['submitted','ingesting','pre_review_running'])))
+    existing=db.scalar(select(Submission).where(Submission.assignment_id==assignment.id,Submission.student_id==user.id,Submission.status.in_(PROCESSING_STATUSES)))
     if existing: fail(409,'submission_busy','Предыдущая отправка ещё обрабатывается.')
     attempt=(db.scalar(select(func.max(Submission.attempt_no)).where(Submission.assignment_id==assignment.id,Submission.student_id==user.id)) or 0)+1
     submission=Submission(assignment_id=assignment.id,student_id=user.id,external_ref=pr_url,attempt_no=attempt,public_data=bool(body.get('publicData',settings.app_env=='dev_demo')))
@@ -615,7 +616,7 @@ def reprocess(submission_id: str, background: BackgroundTasks, user: User = Depe
     if user.role=='student':
         if s.student_id!=user.id: fail(403,'scope_forbidden','Это работа другого студента.')
     else: review_scope(db,user,previous,True)
-    if s.status in ['ingesting','pre_review_running','submitted']: fail(409,'busy','Обработка уже запущена.')
+    if s.status in PROCESSING_STATUSES: fail(409,'busy','Обработка уже запущена.')
     if previous and previous.status=='confirmed': fail(409,'review_locked','Создайте новую отправку для повторной проверки.')
     review=new_review(db,s,previous.reviewer_id if previous else None)
     if previous: previous.status='superseded'
@@ -628,9 +629,9 @@ def prerun(submission_id: str, background: BackgroundTasks, user: User = Depends
     if user.role=='expert': expert_scope(db,user,s.assignment_id)
     else: review_scope(db,user,previous,True)
     if previous.status=='confirmed': fail(409,'review_locked','Подтверждённый результат нельзя перезапустить.')
-    if s.status in ['ingesting','pre_review_running','submitted']: fail(409,'busy','Обработка уже запущена.')
+    if s.status in PROCESSING_STATUSES: fail(409,'busy','Обработка уже запущена.')
     if not s.artifacts: fail(409,'artifacts_required','Сначала загрузите файлы PR.')
-    review=new_review(db,s,previous.reviewer_id); previous.status='superseded'; s.status='pre_review_running'; review.status='pre_review_running'; s.error=None
+    review=new_review(db,s,previous.reviewer_id); previous.status='superseded'; s.status='llm_processing'; review.status='llm_processing'; s.error=None
     job=enqueue(db,'review',review.id); audit(db,user,'review.rerun','review',review.id,{'previousReviewId':previous.id,'configId':review.agent_config_version_id}); db.commit(); background.add_task(dispatch,job.id); return {'jobId':job.id,'reviewId':review.id}
 
 @app.post(P+'/integrations/github/webhook', status_code=202)
@@ -654,7 +655,7 @@ async def github_webhook(request: Request, background: BackgroundTasks, db: Sess
         url=body.get('pull_request',{}).get('html_url')
         for s in db.scalars(select(Submission).where(Submission.external_ref==url)).all():
             previous=latest_review(db,s.id)
-            if previous and previous.status!='confirmed' and s.status not in ['submitted','ingesting','pre_review_running']:
+            if previous and previous.status!='confirmed' and s.status not in PROCESSING_STATUSES:
                 r=new_review(db,s,previous.reviewer_id); previous.status='superseded'; s.status='submitted'; job=enqueue(db,'ingest',r.id); jobs.append(job.id)
     response={'jobIds':jobs,'accepted':True}; remember(db,key,fp,response); audit(db,None,'github.webhook','webhook',delivery[:64]); db.commit()
     for jid in jobs: background.add_task(dispatch,jid)
@@ -735,8 +736,25 @@ def add_annotation(review_id: str, body: dict, user: User = Depends(current_user
 
 @app.post(P+'/reviews/{review_id}/integrity/{signal_id}/decision')
 def integrity_decision(review_id: str, signal_id: str, body: dict, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    r=get(db,Review,review_id); review_scope(db,user,r,True)
-    fail(409,'integrity_mocked','Модуль выявления ИИ пока замокан и не формирует сигналы.')
+    r=edit_review(db,user,review_id)
+    integrity = copy.deepcopy(r.integrity or {'signals': [], 'highlights': []})
+    signals = integrity.get('signals', [])
+    signal = next((item for item in signals if item.get('id') == signal_id), None)
+    if not signal: fail(404, 'signal_not_found', 'Сигнал не найден.')
+    decision = body.get('status') or body.get('decision')
+    if decision not in {'accepted', 'rejected', 'deferred'}:
+        fail(422, 'invalid_decision', 'Укажите status: accepted, rejected или deferred.')
+    signal['status'] = decision
+    for item in integrity.get('highlights', []):
+        if item.get('signal_id') == signal_id:
+            item['status'] = decision
+    pending = [item for item in signals if item.get('status') == 'pending']
+    integrity['decision'] = 'pending' if pending else ('accepted' if all(item.get('status') == 'accepted' for item in signals) else 'reviewed')
+    r.integrity = integrity
+    changed(r)
+    audit(db, user, 'review.integrity_decided', 'review', r.id, {'signalId': signal_id, 'status': decision})
+    db.commit()
+    return review_json(db, r)
 
 @app.post(P+'/reviews/{review_id}/feedback/compose')
 def compose_review_feedback(review_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
@@ -757,7 +775,7 @@ def confirm_review(review_id: str, body: dict, request: Request, user: User = De
     if not r: fail(404,'not_found','Проверка не найдена.')
     review_scope(db,user,r,True)
     if r.status=='confirmed': return review_json(db,r)
-    if r.status in ['ingesting','pre_review_running','submitted']: fail(409,'review_busy','Дождитесь завершения обработки.')
+    if r.status in PROCESSING_STATUSES: fail(409,'review_busy','Дождитесь завершения обработки.')
     if 'revision' in body and body['revision']!=r.revision: fail(409,'revision_conflict','Проверка изменилась. Обновите страницу.')
     rubric=get(db,Rubric,r.rubric_id)
     results={c['criterion_id']:c for c in r.criterion_results}

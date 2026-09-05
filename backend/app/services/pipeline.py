@@ -51,11 +51,32 @@ def _check_repository(repository: str, allowed: list[str] | str | None) -> None:
         raise PipelineError("github_repository_not_allowed")
 
 
+def _upstream_error_code(payload: Any, status_code: int) -> str:
+    message = ""
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = str(error.get("message") or error.get("code") or "")
+        elif isinstance(error, str):
+            message = error
+    lowered = message.lower()
+    if "channel error" in lowered or "channel_error" in lowered:
+        return "upstream_channel_error"
+    if status_code == 429:
+        return "upstream_http_429"
+    if 400 <= status_code < 500:
+        return f"upstream_http_{status_code}"
+    if status_code >= 500:
+        return f"upstream_http_{status_code}"
+    return "upstream_invalid_json"
+
+
+_LM_STUDIO_LOCK = asyncio.Lock()
+
+
 async def _json_request(client: httpx.AsyncClient, method: str, url: str, *, max_bytes: int = 12_000_000, **kwargs: Any) -> Any:
     try:
         async with client.stream(method, url, **kwargs) as response:
-            if response.status_code >= 300:
-                raise PipelineError(f"upstream_http_{response.status_code}")
             chunks: list[bytes] = []
             length = 0
             async for part in response.aiter_bytes():
@@ -63,7 +84,16 @@ async def _json_request(client: httpx.AsyncClient, method: str, url: str, *, max
                 if length > max_bytes:
                     raise PipelineError("upstream_response_too_large")
                 chunks.append(part)
-            return json.loads(b"".join(chunks))
+            raw = b"".join(chunks)
+            try:
+                payload = json.loads(raw) if raw else {}
+            except (ValueError, UnicodeError) as exc:
+                if response.status_code >= 300:
+                    raise PipelineError(f"upstream_http_{response.status_code}") from exc
+                raise PipelineError("upstream_invalid_json") from exc
+            if response.status_code >= 300 or (isinstance(payload, dict) and payload.get("error")):
+                raise PipelineError(_upstream_error_code(payload, response.status_code))
+            return payload
     except (httpx.HTTPError, TimeoutError) as exc:
         raise PipelineError("upstream_unavailable") from exc
     except (ValueError, UnicodeError) as exc:
@@ -582,6 +612,7 @@ async def _call_model(task_type: str, context: dict[str, Any], schema: type[Base
     prompt_hash = hashlib.sha256(json.dumps(messages, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     owns_client = client is None
     client = client or httpx.AsyncClient(timeout=timeout, follow_redirects=False)
+    local_provider = model.get("provider") in {"lm_studio", "ollama", "vllm"}
     try:
         for attempt in range(retries + 1):
             started = time.monotonic()
@@ -589,7 +620,13 @@ async def _call_model(task_type: str, context: dict[str, Any], schema: type[Base
             prompt_hash = hashlib.sha256(json.dumps(effective_messages, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
             metadata = {"model_id": model["id"], "model_name": model["model_name"], "provider": model.get("provider"), "base_url": model["base_url"], "task_type": task_type, "agent_config_version_id": config.get("id"), "effective_params": {**params, "timeout_seconds": timeout, "max_retries": retries}, "prompt_hash": prompt_hash, "attempt": attempt + 1, "input_tokens": None, "output_tokens": None, "error_code": None}
             try:
-                response = await _json_request(client, "POST", endpoint, headers=headers, json=payload, timeout=timeout, max_bytes=2_000_000)
+                if local_provider:
+                    async with _LM_STUDIO_LOCK:
+                        if attempt:
+                            await asyncio.sleep(min(2 ** attempt, 4))
+                        response = await _json_request(client, "POST", endpoint, headers=headers, json=payload, timeout=timeout, max_bytes=2_000_000)
+                else:
+                    response = await _json_request(client, "POST", endpoint, headers=headers, json=payload, timeout=timeout, max_bytes=2_000_000)
                 if not isinstance(response, dict):
                     raise PipelineError("model_invalid_response")
                 if native_gemini:
@@ -621,7 +658,7 @@ async def _call_model(task_type: str, context: dict[str, Any], schema: type[Base
                 return raw
             except PipelineError as exc:
                 metadata["error_code"] = str(exc)
-                if attempt == retries or str(exc) not in {"upstream_http_500", "upstream_http_502", "upstream_http_503", "upstream_unavailable", "model_invalid_json", "model_incomplete_output", "invalid_criterion_schema", "invalid_triage_schema", "invalid_annotation_schema", "model_invalid_schema"}:
+                if attempt == retries or str(exc) not in {"upstream_http_500", "upstream_http_502", "upstream_http_503", "upstream_unavailable", "upstream_channel_error", "model_invalid_json", "model_incomplete_output", "invalid_criterion_schema", "invalid_triage_schema", "invalid_annotation_schema", "model_invalid_schema"}:
                     raise
                 if str(exc) in {"model_invalid_json", "invalid_criterion_schema", "invalid_triage_schema", "invalid_annotation_schema", "model_invalid_schema"}:
                     correction = "The previous response did not match the required JSON format. Return a single JSON object with exactly the schema fields. Validation: " + json.dumps(metadata.get("validation_errors", [{"type": str(exc)}]))
@@ -821,7 +858,7 @@ async def run_review_pipeline(assignment: dict[str, Any], rubric: dict[str, Any]
             annotations.append(annotation)
         results.append(result)
     complete_scores = bool(results) and all(item["suggested_score"] is not None for item in results)
-    return {"criteria": results, "criterion_results": results, "annotations": annotations, "integrity": {"status": "mocked", "signals": [], "message": "Модуль выявления ИИ пока недоступен."}, "integrity_signals": [], "model_calls": calls, "raw_outputs": outputs, "draft_total": sum(item["suggested_score"] for item in results) if complete_scores else None, "partial_total": sum(item["suggested_score"] or 0 for item in results), "status": "needs_human" if errors or not complete_scores else "draft_ready", "error": errors[0] if errors else None, "errors": errors, "reference_warnings": reference_warnings, "agent_config_version_id": agent_config.get("id")}
+    return {"criteria": results, "criterion_results": results, "annotations": annotations, "model_calls": calls, "raw_outputs": outputs, "draft_total": sum(item["suggested_score"] for item in results) if complete_scores else None, "partial_total": sum(item["suggested_score"] or 0 for item in results), "status": "needs_human" if errors or not complete_scores else "draft_ready", "error": errors[0] if errors else None, "errors": errors, "reference_warnings": reference_warnings, "agent_config_version_id": agent_config.get("id")}
 
 
 def compose_feedback(review: dict[str, Any]) -> str:

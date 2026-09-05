@@ -49,6 +49,7 @@ def pipeline_error_message(code: str, *, source: str = 'model') -> str:
         'upstream_http_403': 'GitHub отказал в доступе: проверьте GITHUB_TOKEN, права на репозиторий и лимит запросов.' if source == 'github' else 'Провайдер отказал в доступе. Проверьте права ключа и доступность модели в вашем проекте.',
         'upstream_http_404': 'PR или репозиторий не найден либо недоступен вашему GITHUB_TOKEN.' if source == 'github' else 'Модель не найдена. Проверьте её имя и Base URL в каталоге моделей.',
         'upstream_http_429': f'Исчерпан лимит запросов {provider}. Дождитесь восстановления квоты и повторите запуск.',
+        'upstream_channel_error': 'LM Studio не может связаться с моделью. Убедитесь, что сервер запущен, модель загружена, и повторите отправку работы.',
     }
     message = upstream.get(code)
     if message:

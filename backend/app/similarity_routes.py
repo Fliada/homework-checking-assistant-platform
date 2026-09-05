@@ -70,7 +70,7 @@ def start_run(assignment_id: str, body: StartComparison, user: User = Depends(cu
     except SimilarityError as exc: raise HTTPException(503, str(exc)) from None
     enrolled = {u.id for u in db.scalars(select(User).where(User.role == 'student', User.active == True)).all() if assignment.course_id in (u.course_ids or [])}
     submissions = [s for s in latest_submissions(db, [assignment_id]).values() if s.student_id in enrolled]
-    if any(s.status in {'submitted', 'ingesting', 'pre_review_running'} for s in submissions):
+    if any(s.status in {'submitted', 'ingesting', 'llm_processing', 'pre_review_running'} for s in submissions):
         raise HTTPException(409, 'Дождитесь окончания загрузки и обработки последних отправок.')
     if sum(bool(source_files(s, body.language)) for s in submissions) < 2:
         raise HTTPException(422, 'Нужны минимум две последние отправки разных студентов с кодом выбранного языка.')

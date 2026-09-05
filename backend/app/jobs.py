@@ -93,6 +93,7 @@ def run_job(job_id):
 
 async def process_submission(db, job):
     from .services.pipeline import ingest_github_pr, run_review_pipeline
+    from .services.integrity_check import run_integrity_check
     review = db.get(Review, job.entity_id)
     if review.status == 'confirmed': return
     submission = db.get(Submission, review.submission_id)
@@ -113,7 +114,9 @@ async def process_submission(db, job):
         submission.public_data = bool(submission.public_data and result.get('public', False))
         submission.git_metadata = {key: value for key, value in result.items() if key != 'artifacts'}
         submission.error = None
-    submission.status = review.status = 'pre_review_running'
+        review.integrity = run_integrity_check(submission.artifacts)
+        db.commit()
+    submission.status = review.status = 'llm_processing'
     db.commit()
     models = [model_python(m) for m in db.scalars(select(ModelEndpoint)).all()]
     # Public models can only receive explicitly declared public demonstration work.
@@ -121,7 +124,8 @@ async def process_submission(db, job):
     result = await run_review_pipeline(assignment_input(assignment), {'id': rubric.id, 'version': rubric.version, 'criteria': rubric.criteria}, config_input(config), models, submission.artifacts, app_env=env)
     review.criterion_results = [{**c, 'criterion_id': c.get('criterion_id', c.get('id')), 'final_score': None, 'confirmed': False, 'note': ''} for c in result.get('criteria', [])]
     review.annotations = [{**a, 'id': a.get('id') or uid(), 'status': 'pending', 'source': 'ai', 'visible_to_student': True} for a in result.get('annotations', [])]
-    review.integrity = {'status': 'mocked', 'signals': []}
+    if not review.integrity or review.integrity.get('status') == 'mocked':
+        review.integrity = run_integrity_check(submission.artifacts)
     review.model_calls = result.get('model_calls', [])
     review.draft_score = result.get('draft_total')
     review.status = submission.status = result.get('status', 'draft_ready')
