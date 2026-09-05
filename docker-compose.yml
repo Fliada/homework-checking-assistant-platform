@@ -16,6 +16,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       JOB_MODE: celery
       ARTIFACT_ROOT: /data/artifacts
+      LM_STUDIO_BASE_URL: http://host.docker.internal:8002/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - artifacts_data:/data/artifacts
     ports:
@@ -39,6 +42,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       JOB_MODE: celery
       ARTIFACT_ROOT: /data/artifacts
+      LM_STUDIO_BASE_URL: http://host.docker.internal:8002/v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - artifacts_data:/data/artifacts
     depends_on:

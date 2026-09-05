@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -27,6 +27,12 @@ import {
   Status,
 } from '../components/ui';
 import { api } from '../api';
+import {
+  annotationCategories,
+  annotationCategory,
+  segmentAnnotations,
+  type AnnotationCategory,
+} from '../annotationCategories';
 import type { Annotation, Artifact, CriterionResult, Review, Rubric, SourceAnchor } from '../types';
 
 export function ReviewWorkspace() {
@@ -40,6 +46,7 @@ export function ReviewWorkspace() {
   const [fileId, setFileId] = useState('');
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
   const [tab, setTab] = useState('criteria');
+  const [newCategory, setNewCategory] = useState<AnnotationCategory>('logic');
   const [annotation, setAnnotation] = useState<Annotation | 'new' | null>(null);
   const [flag, setFlag] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -242,10 +249,53 @@ export function ReviewWorkspace() {
                         : { start: i, end: i },
                     )
                   }
+                  onRangeSelect={(start, end) => setSelection({ start, end })}
                   annotations={review.annotations}
                 />
+                {selectedAnchor && canDecide && (
+                  <div
+                    className="selection-actions"
+                    role="toolbar"
+                    aria-label="Категория замечания к выделенному коду"
+                  >
+                    <div className="row between">
+                      <b>
+                        {selectedAnchor.start.startsWith('line:') ? 'Строки ' : 'Фрагменты '}
+                        {selectedAnchor.start.replace('line:', '')} —{' '}
+                        {selectedAnchor.end.replace('line:', '')}
+                      </b>
+                      <button
+                        className="icon-button"
+                        aria-label="Снять выделение"
+                        onClick={() => setSelection(null)}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="row wrap">
+                      {Object.entries(annotationCategories)
+                        .filter(([key]) => key !== 'comment')
+                        .map(([key, label]) => (
+                          <button
+                            key={key}
+                            className={`category-chip category-${key}`}
+                            onClick={() => {
+                              setNewCategory(key as AnnotationCategory);
+                              setAnnotation('new');
+                            }}
+                          >
+                            <span className="category-dot" />
+                            {label}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
                 <div className="source-footer row between">
-                  <span>Выберите фрагмент · Shift для диапазона</span>
+                  <span>
+                    Выделите код мышью или выберите строки с Shift{' '}
+                    <Help text="Замечание привязывается ко всему выделенному диапазону строк или фрагментов. После выделения выберите категорию." />
+                  </span>
                   <Button
                     className="sm"
                     disabled={!selectedAnchor || !canDecide}
@@ -367,13 +417,20 @@ export function ReviewWorkspace() {
                 </div>
                 {review.annotations.length ? (
                   review.annotations.map((a) => (
-                    <article key={a.id} className={`annotation ${a.status}`}>
+                    <article
+                      key={a.id}
+                      className={`annotation ${a.status} category-${annotationCategory(a.category)}`}
+                    >
                       <div className="row between">
                         <Badge tone={a.source === 'ai' ? 'purple' : 'blue'}>
                           {a.source === 'ai' ? 'Агент' : 'Ревьюер'}
                         </Badge>
                         <Status value={a.status} />
                       </div>
+                      <span className={`category-label category-${annotationCategory(a.category)}`}>
+                        <span className="category-dot" />
+                        {annotationCategories[annotationCategory(a.category)]}
+                      </span>
                       <p>{a.message}</p>
                       <button className="anchor-link" onClick={() => jump(a.anchor)}>
                         {a.anchor.path} · {a.anchor.start}
@@ -535,6 +592,7 @@ export function ReviewWorkspace() {
       {annotation && (
         <AnnotationForm
           annotation={annotation}
+          initialCategory={newCategory}
           anchor={selectedAnchor}
           review={review}
           onClose={() => setAnnotation(null)}
@@ -607,40 +665,111 @@ function ArtifactView({
   file,
   selection,
   onSelect,
+  onRangeSelect,
   annotations,
 }: {
   file: Artifact;
   selection: { start: number; end: number } | null;
   onSelect: (index: number, shift: boolean) => void;
+  onRangeSelect: (start: number, end: number) => void;
   annotations: Annotation[];
 }) {
+  const root = useRef<HTMLDivElement>(null);
+  const rangeSelected = useRef(false);
+  function captureSelection() {
+    const native = window.getSelection();
+    if (!native || native.isCollapsed || !root.current) return;
+    function segment(node: Node | null) {
+      const element = node instanceof Element ? node : node?.parentElement;
+      const line = element?.closest<HTMLElement>('[data-segment-index]');
+      return line && root.current?.contains(line) ? Number(line.dataset.segmentIndex) : null;
+    }
+    const from = segment(native.anchorNode),
+      to = segment(native.focusNode);
+    if (from === null || to === null) return;
+    rangeSelected.current = true;
+    onRangeSelect(Math.min(from, to), Math.max(from, to));
+  }
   return file.segments.length ? (
-    <div className="source-code" aria-label={`Содержимое ${file.path}`}>
-      {file.segments.map((segment, i) => (
-        <button
-          id={`segment-${file.id}-${i}`}
-          key={segment.id || i}
-          className={`source-line ${annotations.some((a) => a.anchor.artifactId === file.id && a.anchor.start === segment.anchor && a.status !== 'rejected') ? 'annotated' : ''} ${selection && i >= selection.start && i <= selection.end ? 'selected' : ''}`}
-          onClick={(e) => onSelect(i, e.shiftKey)}
-          aria-pressed={!!selection && i >= selection.start && i <= selection.end}
-        >
-          <span className="line-no" title={segment.anchor}>
-            {segment.anchor
-              .replace('line:', '')
-              .replace('paragraph:', '¶ ')
-              .replace('page:', 'с. ')}
+    <>
+      <div className="annotation-legend" aria-label="Цвета категорий">
+        {Object.entries(annotationCategories).map(([key, label]) => (
+          <span key={key} className={`category-label category-${key}`}>
+            <span className="category-dot" />
+            {label}
           </span>
-          <span>{segment.text || ' '}</span>
-        </button>
-      ))}
-    </div>
+        ))}
+      </div>
+      <div
+        ref={root}
+        className="source-code"
+        aria-label={`Содержимое ${file.path}`}
+        onMouseDown={() => {
+          rangeSelected.current = false;
+        }}
+        onMouseUp={captureSelection}
+        onKeyUp={captureSelection}
+      >
+        {file.segments.map((segment, i) => {
+          const linked = segmentAnnotations(file, i, annotations);
+          const categories = [...new Set(linked.map((a) => annotationCategory(a.category)))];
+          const category = Object.keys(annotationCategories).find((c) =>
+            categories.includes(c as AnnotationCategory),
+          );
+          const selected = !!selection && i >= selection.start && i <= selection.end;
+          return (
+            <div
+              role="button"
+              tabIndex={0}
+              id={`segment-${file.id}-${i}`}
+              data-segment-index={i}
+              key={segment.id || i}
+              className={`source-line ${category ? `annotated category-${category}` : ''} ${selected ? 'selected' : ''}`}
+              onClick={(e) => {
+                if (rangeSelected.current) {
+                  rangeSelected.current = false;
+                  return;
+                }
+                onSelect(i, e.shiftKey);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelect(i, e.shiftKey);
+                }
+              }}
+              aria-pressed={selected}
+            >
+              <span className="line-no" title={segment.anchor}>
+                {segment.anchor
+                  .replace('line:', '')
+                  .replace('paragraph:', '¶ ')
+                  .replace('page:', 'с. ')}
+                <span className="line-category-dots">
+                  {categories.map((c) => (
+                    <i
+                      key={c}
+                      className={`category-dot category-${c}`}
+                      title={annotationCategories[c]}
+                      aria-label={annotationCategories[c]}
+                    />
+                  ))}
+                </span>
+              </span>
+              <span className="source-text">{segment.text || ' '}</span>
+            </div>
+          );
+        })}
+      </div>
+    </>
   ) : (
     <Empty
       title="Предпросмотр недоступен"
-      detail="Файл не содержит поддерживаемого текстового слоя. Откройте оригинал в GitHub и оцените критерии вручную."
+      detail="Откройте исходный PR для ручной проверки файла."
     />
   );
 }
+
 function ScoreRow({
   result,
   rubric,
@@ -718,11 +847,13 @@ function ScoreRow({
 }
 function AnnotationForm({
   annotation,
+  initialCategory,
   anchor,
   review,
   onClose,
 }: {
   annotation: Annotation | 'new';
+  initialCategory: AnnotationCategory;
   anchor: SourceAnchor | null;
   review: Review;
   onClose: () => void;
@@ -777,12 +908,15 @@ function AnnotationForm({
           </select>
         </Field>
         <Field label="Категория">
-          <select name="category" defaultValue={existing?.category || 'logic'}>
-            <option value="logic">Логика</option>
-            <option value="quality">Качество кода</option>
-            <option value="requirement">Требование задания</option>
-            <option value="positive">Сильная сторона</option>
-            <option value="question">Вопрос</option>
+          <select
+            name="category"
+            defaultValue={existing ? annotationCategory(existing.category) : initialCategory}
+          >
+            {Object.entries(annotationCategories).map(([key, label]) => (
+              <option value={key} key={key}>
+                {label}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="Комментарий">

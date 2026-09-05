@@ -6,6 +6,8 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { api, queryClient } from './api';
 import { DataContext, ToastProvider } from './context';
 import { Ledger, Student, Assignments, Analytics, Notifications } from './pages/overview';
+import { CourseDetail } from './pages/courses';
+import { SimilarityPanel } from './pages/similarity';
 import { Expert } from './pages/expert';
 import { ReviewWorkspace } from './pages/review';
 import { Administration, Coordinator, Evals, Models } from './pages/management';
@@ -161,6 +163,7 @@ function mount(element: React.ReactNode, data = fixture(), path = '/') {
           <DataContext.Provider value={data}>
             <Routes>
               <Route path="/review/:id" element={element} />
+              <Route path="/courses/:id" element={element} />
               <Route path="/expert/:id" element={element} />
               <Route path="*" element={element} />
             </Routes>
@@ -378,5 +381,194 @@ describe('редактор заданий', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Настройки агента' }));
     expect((screen.getByLabelText(/Промпт этапа/) as HTMLTextAreaElement).disabled).toBe(true);
     expect(screen.queryByRole('button', { name: /^Сохранить$/ })).toBeNull();
+  });
+});
+
+describe('курсы и сходство кода', () => {
+  it('студент открывает своё задание из курса без служебных вкладок', async () => {
+    const data = fixture();
+    data.user = data.users[1];
+    mockedApi.mockResolvedValue({
+      course: data.courses[0],
+      studentCount: 1,
+      assignmentCount: 1,
+      total: 1,
+      counts: { checking: 1 },
+      completionPercent: 0,
+      points: [],
+      weakCriteria: [],
+      assignments: [
+        {
+          id: 'a1',
+          code: 'ДЗ 1',
+          title: 'HTTP-сервис',
+          dueAt: '2026-10-01',
+          reviewDueAt: '2026-10-05',
+          counts: { checking: 1 },
+          total: 1,
+          waitingMinutes: 30,
+          rows: [
+            {
+              studentId: 'student',
+              studentName: 'Артём',
+              state: 'checking',
+              status: 'in_review',
+              submissionId: 's1',
+              reviewId: null,
+              submittedAt: '2026-09-01',
+              attempt: 2,
+              score: null,
+              maxScore: 10,
+              lateDays: -30,
+              agentNotes: [],
+              similarityComments: ['Поясните выбранный алгоритм.'],
+            },
+          ],
+        },
+      ],
+    });
+    mount(<CourseDetail />, data, '/courses/go');
+    expect(await screen.findByRole('heading', { name: 'HTTP-сервис' })).toBeTruthy();
+    expect(screen.getByText('Поясните выбранный алгоритм.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Моя работа' }).getAttribute('href')).toBe(
+      '/student?course=go&assignment=a1',
+    );
+    expect(screen.queryByRole('button', { name: 'Сходство кода' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Успеваемость' })).toBeNull();
+  });
+  it('отправляет решение JPlag с комментарием, не вызывая изменения оценки', async () => {
+    const report = {
+      id: 'run1',
+      status: 'completed',
+      language: 'go',
+      createdAt: '2026-09-05',
+      engine: 'JPlag 6.3.0',
+      submissionCount: 2,
+      sources: [],
+      excludedIds: [],
+      failedSubmissions: [],
+      pairs: [
+        {
+          id: 'pair1',
+          leftId: 's1',
+          rightId: 's2',
+          leftName: 'Анна',
+          rightName: 'Борис',
+          averagePercent: 85,
+          maxPercent: 90,
+          matchCount: 1,
+          matches: [
+            {
+              left: { path: 'main.go', start: 1, end: 1, code: 'package main' },
+              right: { path: 'main.go', start: 1, end: 1, code: 'package main' },
+            },
+          ],
+          decision: { status: 'pending', comment: '' },
+        },
+      ],
+    };
+    mockedApi.mockImplementation(async (path) =>
+      path.includes('/assignments/')
+        ? { installed: true, languages: ['go'], runs: [report] }
+        : report,
+    );
+    mount(<SimilarityPanel assignments={[{ id: 'a1', code: 'ДЗ 1', title: 'HTTP-сервис' }]} />);
+    await userEvent.click(await screen.findByText('Совпавшие фрагменты и решение'));
+    expect(screen.getAllByText('package main').length).toBe(2);
+    await userEvent.selectOptions(screen.getByLabelText('Решение проверяющего'), 'confirmed');
+    const field = screen.getByLabelText('Комментарий для обоих студентов');
+    expect((field as HTMLTextAreaElement).required).toBe(true);
+    await userEvent.type(field, 'Объясните этот фрагмент.');
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить решение' }));
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith(
+        '/similarity/run1/pairs/pair1',
+        { status: 'confirmed', comment: 'Объясните этот фрагмент.' },
+        'PATCH',
+      ),
+    );
+    expect(
+      mockedApi.mock.calls.some(
+        ([path]) => path.includes('/criteria') || path.includes('/confirm'),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('категории замечаний в коде', () => {
+  it('после выделения сразу выбирает категорию и сохраняет её с диапазоном', async () => {
+    const interaction = userEvent.setup();
+    const data = fixture();
+    data.submissions[0].artifacts[0].segments.push({
+      id: 'l2',
+      anchor: 'line:2',
+      text: 'func main() {}',
+    });
+    mount(<ReviewWorkspace />, data, '/review/r1');
+    await interaction.click(screen.getByRole('button', { name: /package main/ }));
+    await interaction.keyboard('{Shift>}');
+    await interaction.click(screen.getByRole('button', { name: /func main/ }));
+    await interaction.keyboard('{/Shift}');
+    await interaction.click(screen.getByRole('button', { name: 'Требование задания' }));
+    expect((screen.getByLabelText('Категория') as HTMLSelectElement).value).toBe('requirement');
+    await interaction.type(screen.getByLabelText('Комментарий'), 'Добавьте обработку сигнала.');
+    await interaction.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith(
+        '/reviews/r1/annotations',
+        expect.objectContaining({
+          category: 'requirement',
+          anchor: expect.objectContaining({ start: 'line:1', end: 'line:2' }),
+        }),
+        'POST',
+      ),
+    );
+  });
+  it('подсвечивает весь диапазон, пересечения категорий и исключает отклонённые заметки', () => {
+    const data = fixture();
+    data.submissions[0].artifacts[0].segments.push(
+      { id: 'l2', anchor: 'line:2', text: 'func main() {}' },
+      { id: 'l3', anchor: 'line:3', text: '// end' },
+    );
+    data.reviews[0].annotations = [
+      {
+        id: 'n1',
+        criterionId: null,
+        category: 'logic',
+        source: 'reviewer',
+        status: 'accepted',
+        message: 'Логика',
+        visibleToStudent: true,
+        anchor: { artifactId: 'f1', path: 'main.go', start: 'line:1', end: 'line:2', quote: '' },
+      },
+      {
+        id: 'n2',
+        criterionId: null,
+        category: 'quality',
+        source: 'reviewer',
+        status: 'accepted',
+        message: 'Стиль',
+        visibleToStudent: true,
+        anchor: { artifactId: 'f1', path: 'main.go', start: 'line:2', end: 'line:2', quote: '' },
+      },
+      {
+        id: 'n3',
+        criterionId: null,
+        category: 'positive',
+        source: 'ai',
+        status: 'rejected',
+        message: 'Хорошо',
+        visibleToStudent: true,
+        anchor: { artifactId: 'f1', path: 'main.go', start: 'line:3', end: 'line:3', quote: '' },
+      },
+    ];
+    mount(<ReviewWorkspace />, data, '/review/r1');
+    expect(screen.getByRole('button', { name: /package main/ }).className).toContain(
+      'category-logic',
+    );
+    const second = screen.getByRole('button', { name: /func main/ });
+    expect(second.className).toContain('annotated');
+    expect(second.querySelectorAll('.category-dot').length).toBe(2);
+    expect(screen.getByRole('button', { name: /\/\/ end/ }).className).not.toContain('annotated');
   });
 });

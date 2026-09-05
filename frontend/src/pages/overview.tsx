@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
+import { AgentNotes } from './courses';
 import {
   ArrowRight,
   Bell,
@@ -41,7 +42,16 @@ export function Ledger() {
   const [sort, setSort] = useState('attention');
   const [view, setView] = useState('list');
   const assignments = data.assignments.filter((a) => course === 'all' || a.courseId === course);
-  const filtered = data.submissions.filter(
+  const latestSubmissions = data.submissions.filter(
+    (s) =>
+      !data.submissions.some(
+        (other) =>
+          other.studentId === s.studentId &&
+          other.assignmentId === s.assignmentId &&
+          other.attempt > s.attempt,
+      ),
+  );
+  const filtered = latestSubmissions.filter(
     (s) =>
       assignments.some((a) => a.id === s.assignmentId) &&
       (assignment === 'all' || s.assignmentId === assignment) &&
@@ -281,6 +291,10 @@ export function Ledger() {
                   </th>
                   <th>Проверить до</th>
                   <th>Ревьюер</th>
+                  <th>
+                    Что заметил агент{' '}
+                    <Help text="Замечания агента и критерии, требующие решения человека. Это черновик до подтверждения ревьюером." />
+                  </th>
                   <th />
                 </tr>
               </thead>
@@ -328,6 +342,9 @@ export function Ledger() {
                       </td>
                       <td>
                         {data.users.find((u) => u.id === s.reviewerId)?.name || 'Не назначен'}
+                      </td>
+                      <td>
+                        <AgentNotes review={r} />
                       </td>
                       <td>
                         {r ? (
@@ -547,6 +564,12 @@ export function Assignments() {
 }
 export function Student() {
   const data = useData();
+  const [params] = useSearchParams();
+  const visibleAssignments = data.assignments.filter(
+    (a) =>
+      (!params.get('course') || a.courseId === params.get('course')) &&
+      (!params.get('assignment') || a.id === params.get('assignment')),
+  );
   const { run, busy } = useAction();
   const [selected, setSelected] = useState<Assignment | null>(null);
   const [details, setDetails] = useState<Assignment | null>(null);
@@ -563,25 +586,35 @@ export function Student() {
     if (response) setSelected(null);
   }
   const own = data.submissions.filter((s) => s.studentId === data.user.id);
-  const done = own.filter((s) => complete(s.status));
+  const latest = own.filter(
+    (s) =>
+      visibleAssignments.some((a) => a.id === s.assignmentId) &&
+      !own.some((other) => other.assignmentId === s.assignmentId && other.attempt > s.attempt),
+  );
+  const done = latest.filter((s) => complete(s.status));
   const r = data.reviews.find((r) => r.id === result?.reviewId);
   return (
     <>
+      {params.get('course') && (
+        <Link className="back-link" to={`/courses/${params.get('course')}`}>
+          ← К курсу
+        </Link>
+      )}
       <PageTitle
         title="Мои задания"
         eyebrow={data.courses.map((c) => c.title).join(' · ') || 'Учебные программы'}
       />
       <div className="grid three">
-        <Metric label="Всего заданий" value={data.assignments.length} tone="purple" />
+        <Metric label="Всего заданий" value={visibleAssignments.length} tone="purple" />
         <Metric
           label="На проверке"
-          value={own.filter((s) => !complete(s.status)).length}
+          value={latest.filter((s) => !complete(s.status)).length}
           tone="blue"
         />
         <Metric label="Результатов получено" value={done.length} tone="green" />
       </div>
       <div className="grid two section-gap">
-        {data.assignments.map((a) => {
+        {visibleAssignments.map((a) => {
           const attempts = own
             .filter((s) => s.assignmentId === a.id)
             .sort((a, b) => b.attempt - a.attempt);

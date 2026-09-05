@@ -186,3 +186,16 @@ class PlatformSetting(Base):
     __tablename__ = 'platform_settings'
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default='global')
     values: Mapped[dict] = mapped_column(JSON, default=lambda: {'maxPrFiles': 100, 'maxPrBytes': 10000000, 'weeklyCapacityMinutes': 300})
+
+class SimilarityRun(Base):
+    __tablename__ = 'similarity_runs'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=uid)
+    assignment_id: Mapped[str] = mapped_column(ForeignKey('assignments.id'), index=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey('users.id'))
+    status: Mapped[str] = mapped_column(String(24), default='queued')
+    language: Mapped[str] = mapped_column(String(24))
+    submission_ids: Mapped[list] = mapped_column(JSON, default=list)
+    results: Mapped[dict] = mapped_column(JSON, default=dict)
+    decisions: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

@@ -31,15 +31,16 @@ import {
 } from './components/ui';
 import { roleLabels, type Bootstrap, type Role, type User } from './types';
 import { Ledger, Student, Assignments, Notifications, Analytics } from './pages/overview';
+import { Courses, CourseDetail } from './pages/courses';
 import { ReviewWorkspace } from './pages/review';
 import { Expert } from './pages/expert';
 import { Administration, Models, Coordinator, Evals } from './pages/management';
 
 const home: Record<Role, string> = {
-  student: '/student',
+  student: '/courses',
   reviewer: '/ledger',
   coordinator: '/coordinator',
-  expert: '/assignments',
+  expert: '/courses',
   moderator: '/notifications',
   admin: '/admin',
   owner: '/admin',
@@ -47,10 +48,16 @@ const home: Record<Role, string> = {
 };
 const nav = [
   {
+    path: '/courses',
+    title: 'Курсы',
+    icon: BookOpen,
+    roles: ['student', 'reviewer', 'expert', 'coordinator', 'admin', 'owner'],
+  },
+  {
     path: '/ledger',
     title: 'Ведомость',
     icon: ClipboardList,
-    roles: ['reviewer', 'coordinator', 'admin', 'owner'],
+    roles: ['reviewer', 'expert', 'coordinator', 'admin', 'owner'],
   },
   { path: '/student', title: 'Мои задания', icon: BookOpen, roles: ['student'] },
   {
@@ -404,6 +411,8 @@ function Shell({ onLogout }: { onLogout: () => void }) {
       <main className="main" id="main">
         <Routes>
           <Route path="/" element={<Navigate to={home[user.role]} replace />} />
+          <Route path="/courses" element={guard('/courses', <Courses />)} />
+          <Route path="/courses/:id" element={guard('/courses', <CourseDetail />)} />
           <Route path="/ledger" element={guard('/ledger', <Ledger />)} />
           <Route path="/review/:id" element={guard('/ledger', <ReviewWorkspace />)} />
           <Route path="/student" element={guard('/student', <Student />)} />

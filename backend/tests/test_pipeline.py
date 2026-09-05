@@ -616,3 +616,51 @@ def test_quota_exhaustion_stops_retries_critic_and_remaining_criteria(setup_gemm
     assert len(result['criteria']) == 3
     assert all(item['suggested_score'] is None for item in result['criteria'])
     assert 'private-provider-detail' not in json.dumps(result)
+
+
+def test_valid_lm_studio_abstention_preserves_reason_and_ignores_reasoning(setup_review):
+    setup_review[2]['tasks']['review_critic'] = {'model_id': 'local', 'params': {'max_retries': 0}}
+    reason = 'Нет сведений об обработке SIGINT/SIGTERM и завершении через context.'
+    calls = []
+    def handler(request):
+        calls.append(request)
+        raw = {'criterion_id': 'c1', 'suggested_score': None, 'confidence': 0.0, 'abstained': True,
+               'context_sufficient': False, 'reason': reason, 'evidence': [], 'annotations': []}
+        return httpx.Response(200, json={'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(raw), 'reasoning': 'PRIVATE REASONING', 'tool_calls': []}}]})
+    result = run_with_transport(setup_review, handler)
+    assert len(calls) == 1
+    assert result['error'] is None
+    assert result['criteria'][0]['reason'] == reason
+    assert result['criteria'][0]['suggested_score'] is None
+    assert 'PRIVATE REASONING' not in json.dumps(result)
+
+
+def test_legacy_demo_source_anchors_work_with_real_evidence(setup_review):
+    setup_review[4][:] = [{'id': 'demo-artifact', 'path': 'main.go', 'parse_status': 'parsed', 'public': True,
+                          'segments': [{'id': 'line-1', 'path': 'main.go', 'anchor': 'line:1', 'text': 'package main'}]}]
+    result = run_with_transport(setup_review, lambda request: response(model_response(request)))
+    assert result['draft_total'] == 2
+    evidence = result['criteria'][0]['evidence'][0]
+    assert evidence['artifact_id'] == 'demo-artifact'
+    assert evidence['anchor']['start'] == 'line:1'
+
+
+def test_lm_studio_schema_validation_retries_without_leaking_response(setup_review, monkeypatch):
+    setup_review[3][0]['capabilities'] = {'json_schema': True}
+    setup_review[2]['tasks']['criterion_evaluation']['params']['max_retries'] = 1
+    async def no_sleep(_): pass
+    monkeypatch.setattr('app.services.pipeline.asyncio.sleep', no_sleep)
+    calls = 0
+    def handler(request):
+        nonlocal calls
+        calls += 1
+        payload = json.loads(request.content)
+        assert payload['response_format']['json_schema']['strict'] is True
+        raw = model_response(request)
+        if calls == 1: raw['confidence'] = 'SECRET-INVALID-VALUE'
+        return response(raw)
+    result = run_with_transport(setup_review, handler)
+    assert result['draft_total'] == 2 and calls == 2
+    assert result['model_calls'][0]['error_code'] == 'invalid_criterion_schema'
+    assert result['model_calls'][0]['validation_errors'][0]['field'] == 'confidence'
+    assert 'SECRET-INVALID-VALUE' not in json.dumps(result)

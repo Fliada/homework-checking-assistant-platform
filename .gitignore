@@ -13,3 +13,5 @@ backend/*.db
 backend/*.db-*
 backend/artifacts/
 .pytest_cache/
+backend/vendor/
+backend/similarity-data/

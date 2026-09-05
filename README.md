@@ -74,9 +74,15 @@ npm run preview
 
 Документация: [GitHub Pages workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages), [публикация Vite](https://vite.dev/guide/static-deploy.html#github-pages).
 
-## Gemma через Google AI Studio и GitHub
+## Курсы, локальная модель и JPlag
 
-По умолчанию проверки используют `gemma-4-31b-it` через Gemini API. Создайте ключ в [Google AI Studio](https://aistudio.google.com/apikey) и заполните существующий `.env` в корне репозитория:
+В разделе **Курсы** находятся прогресс студента, ведомость потока, графики успеваемости и сравнение решений JPlag. Подробные правила подсчёта, доступов и запуска: [Курсы и сходство решений](docs/COURSES_AND_SIMILARITY.md).
+
+Текущий профиль — **LM Studio**, `openai/gpt-oss-20b`, `http://127.0.0.1:8002/v1`. Включите сервер в LM Studio. Для применения к существующей локальной базе выполните `npm run model:local`, затем перезапустите `npm run dev`. Для установки локального движка сравнения выполните `npm run setup:jplag`.
+
+## Дополнительно: Gemma через Google AI Studio и GitHub
+
+Для отдельного endpoint можно использовать `gemma-4-31b-it` через Gemini API. Создайте ключ в [Google AI Studio](https://aistudio.google.com/apikey) и заполните существующий `.env` в корне репозитория:
 
 ```dotenv
 GEMINI_API_KEY=your-google-ai-studio-api-key

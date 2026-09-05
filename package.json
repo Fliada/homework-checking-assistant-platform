@@ -10,7 +10,9 @@
     "dev:backend": "backend/.venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "vitest run"
+    "test": "vitest run",
+    "model:local": "backend/.venv/bin/python scripts/use-local-model.py",
+    "setup:jplag": "backend/.venv/bin/python scripts/setup-jplag.py"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.0",

@@ -254,6 +254,7 @@ export const roleLabels: Record<Role, string> = {
   pending: 'Ожидает роли',
 };
 export const statusLabels: Record<string, string> = {
+  not_submitted: 'Не сдано',
   submitted: 'Отправлено',
   ingesting: 'Загрузка файлов',
   ready: 'Готово к проверке',

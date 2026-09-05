@@ -40,7 +40,10 @@ def initialize(db):
         db.add(Course(id='go', title='Go: разработка микросервисов', run='Осень 2026 · поток 1', owner_expert_id='demo-expert'))
     if not db.get(ModelEndpoint, 'openai-default'):
         # Keep the original registry ID so existing assignment bindings remain valid.
-        db.add(ModelEndpoint(id='openai-default', name='Gemma · Google AI Studio', provider='gemini', group='balanced', base_url='https://generativelanguage.googleapis.com/v1beta', model_name=os.getenv('GEMMA_MODEL', 'gemma-4-31b-it'), api_key_env='GEMINI_API_KEY', default_params={'temperature': .2, 'max_output_tokens': 4000, 'timeout_seconds': 90, 'max_retries': 2}, capabilities={'json_schema': False, 'json_mode': False, 'max_context_tokens': 32000}))
+        if os.getenv('LLM_PROVIDER') == 'lm_studio':
+            db.add(ModelEndpoint(id='openai-default', name='GPT OSS 20B · LM Studio', provider='lm_studio', group='balanced', base_url=os.getenv('LM_STUDIO_BASE_URL', 'http://127.0.0.1:8002/v1'), model_name=os.getenv('LM_STUDIO_MODEL', 'openai/gpt-oss-20b'), api_key_env='LM_STUDIO_API_KEY', default_params={'temperature': .2, 'max_output_tokens': 4000, 'timeout_seconds': 180, 'max_retries': 1}, capabilities={'json_schema': False, 'json_mode': False, 'max_context_tokens': 32000}))
+        else:
+            db.add(ModelEndpoint(id='openai-default', name='Gemma · Google AI Studio', provider='gemini', group='balanced', base_url='https://generativelanguage.googleapis.com/v1beta', model_name=os.getenv('GEMMA_MODEL', 'gemma-4-31b-it'), api_key_env='GEMINI_API_KEY', default_params={'temperature': .2, 'max_output_tokens': 4000, 'timeout_seconds': 90, 'max_retries': 2}, capabilities={'json_schema': False, 'json_mode': False, 'max_context_tokens': 32000}))
     db.flush()
     for n in range(1, 4):
         fixture = json.loads((Path(__file__).parents[1] / 'fixtures' / f'go-task-{n}.json').read_text())

@@ -572,10 +572,10 @@ const providerPresets: Record<
   },
   lm_studio: {
     label: 'LM Studio',
-    baseUrl: 'http://localhost:1234/v1',
+    baseUrl: 'http://127.0.0.1:8002/v1',
     apiKeyEnv: 'LM_STUDIO_API_KEY',
-    modelName: '',
-    format: 'json',
+    modelName: 'openai/gpt-oss-20b',
+    format: 'prompt',
   },
   vllm: { label: 'vLLM', baseUrl: '', apiKeyEnv: 'VLLM_API_KEY', modelName: '', format: 'json' },
   ollama: {

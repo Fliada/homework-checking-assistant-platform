@@ -50,7 +50,11 @@ export function useAction() {
     setBusy(true);
     try {
       const result = await api<T>(path, body, method);
-      await queryClient.invalidateQueries({ queryKey: ['bootstrap'] });
+      await Promise.all(
+        ['bootstrap', 'courses', 'course-progress', 'similarity'].map((key) =>
+          queryClient.invalidateQueries({ queryKey: [key] }),
+        ),
+      );
       if (message) toast(message);
       return result;
     } catch (error) {

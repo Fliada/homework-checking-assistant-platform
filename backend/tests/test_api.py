@@ -7,6 +7,7 @@ os.environ['OWNER_PASSWORD'] = 'OwnerPassword123!'
 os.environ['APP_DEBUG'] = 'true'
 os.environ['SEED_DEMO'] = 'true'
 os.environ['JOB_MODE'] = 'local'
+os.environ['LLM_PROVIDER'] = 'gemini'  # Tests must not inherit the developer's model profile.
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -355,3 +356,96 @@ def test_model_connection_change_invalidates_previous_health(client,connection_c
     assert changed.status_code==200 and changed.json()['health']=='unknown'
     with SessionLocal() as db:
         assert db.get(ModelEndpoint,model['id']).health=='unknown'
+
+
+def test_course_progress_latest_attempt_and_missing_students(client):
+    from app.models import Submission
+    auth = headers(client, 'expert')
+    student = headers(client, 'student')
+    data = client.get('/api/v1/bootstrap', headers=auth).json()
+    course_id = data['assignments'][0]['courseId']
+    before = client.get(f'/api/v1/courses/{course_id}/progress', headers=auth).json()
+    with SessionLocal() as db:
+        db.add(User(id='not-submitted', email='missing@example.test', name='Missing', role='student', account_type='student', course_ids=[course_id], password_hash='x'))
+        source = db.get(Submission, 'demo-submission-1')
+        db.add(Submission(id='latest-attempt', assignment_id=source.assignment_id, student_id=source.student_id,
+                          attempt_no=2, external_ref=source.external_ref, status='submitted'))
+        db.commit()
+    after = client.get(f'/api/v1/courses/{course_id}/progress', headers=auth).json()
+    assert after['studentCount'] == before['studentCount'] + 1
+    assert after['total'] == after['assignmentCount'] * after['studentCount']
+    assert sum(after['counts'].get(k, 0) for k in ['completed', 'checking', 'attention', 'missing']) == after['total']
+    own = client.get(f'/api/v1/courses/{course_id}/progress', headers=student).json()
+    assert own['studentCount'] == 1
+    assert all(row['studentId'] == 'demo-student' for a in own['assignments'] for row in a['rows'])
+    assert own['points'] == [] and own['weakCriteria'] == []
+    row = next(a['rows'][0] for a in own['assignments'] if a['id'] == 'go-task-1')
+    assert row['submissionId'] == 'latest-attempt' and row['attempt'] == 2
+    assert row['agentNotes'] == [] and row['score'] is None
+    assert client.get('/api/v1/courses/unknown/progress', headers=student).status_code == 404
+
+
+def test_course_scope_and_reviewer_private_reviews(client):
+    auth = headers(client, 'reviewer')
+    with SessionLocal() as db:
+        from app.models import Course
+        db.add(Course(id='private-course', title='Private', run='2026'))
+        db.commit()
+    assert client.get('/api/v1/courses/private-course/progress', headers=auth).status_code == 403
+    data = client.get('/api/v1/bootstrap', headers=auth).json()
+    progress = client.get(f"/api/v1/courses/{data['courses'][0]['id']}/progress", headers=auth).json()
+    allowed = {r['id'] for r in data['reviews']}
+    for a in progress['assignments']:
+        for row in a['rows']:
+            if row['reviewId'] is not None: assert row['reviewId'] in allowed
+            else: assert row['agentNotes'] == [] and row['score'] is None
+
+
+def test_similarity_scope_human_decisions_and_no_grade_changes(client, monkeypatch):
+    from app.models import SimilarityRun, Submission
+    from app import similarity_routes
+    monkeypatch.setattr(similarity_routes, 'runtime', lambda: ('java', 'jplag.jar'))
+    monkeypatch.setattr(similarity_routes, 'dispatch', lambda job_id: None)
+    expert = headers(client, 'expert'); student = headers(client, 'student'); reviewer = headers(client)
+    assert client.post('/api/v1/assignments/go-task-1/similarity', json={'language': 'go'}, headers=student).status_code == 403
+    assert client.get('/api/v1/assignments/go-task-1/similarity', headers=student).status_code == 403
+    assert client.post('/api/v1/assignments/go-task-1/similarity', json={'language': '../shell'}, headers=expert).status_code == 422
+    response = client.post('/api/v1/assignments/go-task-1/similarity', json={'language': 'go'}, headers=expert)
+    assert response.status_code == 202, response.text
+    rid = response.json()['id']
+    assert client.post('/api/v1/assignments/go-task-1/similarity', json={'language': 'go'}, headers=expert).json()['id'] == rid
+    with SessionLocal() as db:
+        run = db.get(SimilarityRun, rid); run.status = 'completed'
+        run.results = {'pairs': [{'id': 'pair', 'leftId': 'demo-submission-1', 'rightId': 'demo-submission-2', 'averagePercent': 91, 'matches': [{'left': {'code': 'PRIVATE CODE'}}]}],
+                       'submissions': [{'id': 'demo-submission-1', 'studentId': 'demo-student'}, {'id': 'demo-submission-2', 'studentId': 'student-2'}]}
+        before_score = db.get(Review, 'demo-review-1').final_score
+        course_id = db.get(Assignment, 'go-task-1').course_id
+        db.commit()
+    assert client.get(f'/api/v1/similarity/{rid}', headers=student).status_code == 403
+    assert client.get(f'/api/v1/similarity/{rid}', headers=reviewer).status_code == 200
+    endpoint = f'/api/v1/similarity/{rid}/pairs/pair'
+    assert client.patch(endpoint, json={'status': 'confirmed', 'comment': ''}, headers=expert).status_code == 422
+    before = client.get(f'/api/v1/courses/{course_id}/progress', headers=student).text
+    assert 'PRIVATE CODE' not in before and 'averagePercent' not in before
+    assert client.patch(endpoint, json={'status': 'confirmed', 'comment': 'Объясните реализацию цикла.'}, headers=expert).status_code == 200
+    after = client.get(f'/api/v1/courses/{course_id}/progress', headers=student).text
+    assert 'Объясните реализацию цикла.' in after and 'PRIVATE CODE' not in after
+    with SessionLocal() as db: assert db.get(Review, 'demo-review-1').final_score == before_score
+    assert client.patch(endpoint, json={'status': 'dismissed', 'comment': 'Общий шаблон'}, headers=reviewer).status_code == 200
+    after = client.get(f'/api/v1/courses/{course_id}/progress', headers=student).text
+    assert 'Объясните реализацию цикла.' not in after and 'Общий шаблон' not in after
+
+
+def test_annotation_category_can_be_changed_without_losing_anchor(client):
+    auth = headers(client)
+    workspace = client.get('/api/v1/reviews/demo-review-1/workspace', headers=auth).json()
+    artifact = workspace['submission']['artifacts'][0]
+    anchor = {'artifactId': artifact['id'], 'path': artifact['path'], 'start': artifact['segments'][0]['anchor'], 'end': artifact['segments'][2]['anchor'], 'quote': '\n'.join(s['text'] for s in artifact['segments'][:3])}
+    response = client.post('/api/v1/reviews/demo-review-1/annotations', headers=auth, json={'message': 'Уточните реализацию.', 'category': 'question', 'anchor': anchor})
+    assert response.status_code == 201, response.text
+    annotation = response.json()['annotations'][-1]
+    changed = client.patch(f"/api/v1/reviews/demo-review-1/annotations/{annotation['id']}", headers=auth, json={'category': 'requirement', 'status': 'edited'})
+    assert changed.status_code == 200
+    updated = changed.json()['annotations'][-1]
+    assert updated['category'] == 'requirement'
+    assert updated['anchor'] == annotation['anchor']

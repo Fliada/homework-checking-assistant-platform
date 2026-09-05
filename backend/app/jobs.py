@@ -20,7 +20,9 @@ def dispatch(job_id):
                 job=db.get(Job,job_id)
                 if job:
                     job.status,job.error='failed','Очередь Redis недоступна. Повторите запуск после восстановления.'
-                    if job.kind=='eval':
+                    if job.kind=='similarity':
+                        entity=db.get(SimilarityRun,job.entity_id); entity.status='failed'; entity.error=job.error
+                    elif job.kind=='eval':
                         entity=db.get(EvalRun,job.entity_id); entity.status='failed'; entity.error=job.error
                     else:
                         review=db.get(Review,job.entity_id); review.status='needs_human'
@@ -64,7 +66,10 @@ def run_job(job_id):
         if not claimed: return
         job = db.get(Job, job_id)
         try:
-            if job.kind == 'eval':
+            if job.kind == 'similarity':
+                from .services.similarity import process_similarity
+                process_similarity(db, job)
+            elif job.kind == 'eval':
                 asyncio.run(process_eval(db, job))
             else:
                 asyncio.run(process_submission(db, job))
@@ -73,14 +78,16 @@ def run_job(job_id):
             db.rollback()
             job = db.get(Job, job_id)
             job.status, job.error = 'failed', safe_error(exc, source='github' if job.kind=='ingest' else 'model')
-            if job.kind == 'eval':
+            if job.kind == 'similarity':
+                entity = db.get(SimilarityRun, job.entity_id)
+            elif job.kind == 'eval':
                 entity = db.get(EvalRun, job.entity_id)
             else:
                 review = db.get(Review, job.entity_id)
                 entity = db.get(Submission, review.submission_id) if review else None
                 if review: review.status = 'needs_human'
             if entity:
-                entity.status, entity.error = 'failed' if job.kind == 'eval' else 'needs_human', job.error
+                entity.status, entity.error = 'failed' if job.kind in {'eval', 'similarity'} else 'needs_human', job.error
         job.finished_at = now()
         db.commit()
 

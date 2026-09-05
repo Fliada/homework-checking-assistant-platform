@@ -720,6 +720,7 @@ def decide_annotation(review_id: str, annotation_id: str, body: dict, user: User
     if 'criterionId' in body:
         if body['criterionId'] is not None and body['criterionId'] not in {c['id'] for c in get(db,Rubric,r.rubric_id).criteria}: fail(422,'invalid_criterion','Критерий отсутствует в рубрике.')
         a['criterion_id']=body['criterionId']
+    if 'category' in body: a['category']=text_field(body,'category',maximum=100)
     if 'visibleToStudent' in body: a['visible_to_student']=bool(body['visibleToStudent'])
     if 'anchor' in body: a['source_anchor']=normalize_anchor(db,r,body['anchor'])
     r.annotations=annotations; changed(r); audit(db,user,'review.annotation_decided','review',r.id,{'annotationId':annotation_id,'status':a['status']}); db.commit(); return review_json(db,r)
@@ -729,7 +730,7 @@ def add_annotation(review_id: str, body: dict, user: User = Depends(current_user
     r=edit_review(db,user,review_id); criterion_id=body.get('criterionId')
     if criterion_id and criterion_id not in {c['id'] for c in get(db,Rubric,r.rubric_id).criteria}: fail(422,'invalid_criterion','Критерий отсутствует в рубрике.')
     anchor=normalize_anchor(db,r,body.get('anchor',{}))
-    a={'id':uid(),'criterion_id':criterion_id,'category':body.get('category','comment'),'source':'reviewer','status':'accepted','message':text_field(body,'message',maximum=10000),'visible_to_student':bool(body.get('visibleToStudent',True)),'source_anchor':anchor}
+    a={'id':uid(),'criterion_id':criterion_id,'category':text_field(body,'category',maximum=100) if 'category' in body else 'comment','source':'reviewer','status':'accepted','message':text_field(body,'message',maximum=10000),'visible_to_student':bool(body.get('visibleToStudent',True)),'source_anchor':anchor}
     r.annotations=[*r.annotations,a]; changed(r); audit(db,user,'review.annotation_created','review',r.id,{'annotationId':a['id']}); db.commit(); return review_json(db,r)
 
 @app.post(P+'/reviews/{review_id}/integrity/{signal_id}/decision')
@@ -952,3 +953,8 @@ def analytics(user: User = Depends(current_user), db: Session = Depends(get_db))
     durations.sort()
     def percentile(p): return durations[min(len(durations)-1,int((len(durations)-1)*p))] if durations else None
     return {'totalSubmissions':len(data['submissions']),'confirmedReviews':len(confirmed),'activeMinutes':sum(r['activeMinutes'] for r in confirmed),'submitToFeedbackP50Hours':percentile(.5),'submitToFeedbackP90Hours':percentile(.9),'modelCalls':len(calls),'modelTokens':sum((c.get('input_tokens') or 0)+(c.get('output_tokens') or 0) for c in calls),'evalRuns':len(data['evals']),'integrityStatus':'mock','source':'database'}
+
+from .course_routes import router as course_router
+app.include_router(course_router)
+from .similarity_routes import router as similarity_router
+app.include_router(similarity_router)
