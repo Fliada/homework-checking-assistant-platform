@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.work/
+.env
+.env.local
+frontend/.env.local
+coverage/
+*.tsbuildinfo
+__pycache__/
+.venv/
+.DS_Store
+backend/*.db
+backend/*.db-*
+backend/artifacts/
+.pytest_cache/

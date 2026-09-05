@@ -1,0 +1,73 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - '5173:80'
+    depends_on:
+      api:
+        condition: service_healthy
+  api:
+    build: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://reviewer:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/reviewer
+      REDIS_URL: redis://redis:6379/0
+      JOB_MODE: celery
+      ARTIFACT_ROOT: /data/artifacts
+    volumes:
+      - artifacts_data:/data/artifacts
+    ports:
+      - '8000:8000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  worker:
+    build: ./backend
+    command: celery -A app.worker:app worker --loglevel=warning --concurrency=2
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://reviewer:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/reviewer
+      REDIS_URL: redis://redis:6379/0
+      JOB_MODE: celery
+      ARTIFACT_ROOT: /data/artifacts
+    volumes:
+      - artifacts_data:/data/artifacts
+    depends_on:
+      api:
+        condition: service_healthy
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: reviewer
+      POSTGRES_USER: reviewer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U reviewer -d reviewer']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  postgres_data:
+  artifacts_data:
+  redis_data:
