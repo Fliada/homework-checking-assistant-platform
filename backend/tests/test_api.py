@@ -529,3 +529,23 @@ def test_anthropic_catalog_and_probe(client, monkeypatch, status, metadata, heal
     assert requests[0].headers['x-api-key']=='test-anthropic-key'
     assert requests[0].headers['anthropic-version']=='2023-06-01'
     assert 'test-anthropic-key' not in result.text
+
+
+def test_automatic_similarity_queues_once_without_llm(client, monkeypatch):
+    from app import jobs
+    from app.models import Submission, SimilarityRun
+    from app.services import similarity
+    monkeypatch.setattr(similarity,'runtime',lambda: ('java','jplag.jar'))
+    monkeypatch.setattr(similarity,'source_files',lambda submission,language: {'main.go':'code'} if language=='go' else {})
+    dispatched=[]
+    monkeypatch.setattr(jobs,'dispatch',dispatched.append)
+    with SessionLocal() as db:
+        for submission in db.scalars(select(Submission).where(Submission.assignment_id=='go-task-1')).all():
+            submission.status='draft_ready'
+        db.commit()
+        jobs.schedule_similarity(db,'go-task-1')
+        jobs.schedule_similarity(db,'go-task-1')
+        runs=db.scalars(select(SimilarityRun).where(SimilarityRun.assignment_id=='go-task-1')).all()
+        assert len(runs)==1
+        assert len(dispatched)==1
+        assert len(runs[0].submission_ids)>=2

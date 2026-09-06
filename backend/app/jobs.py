@@ -47,6 +47,37 @@ def enqueue(db, kind, entity_id):
     db.flush()
     return job
 
+def auto_confirm_criteria(results, threshold):
+    updated = []
+    for item in results:
+        criterion = dict(item)
+        if not criterion.get('abstained', True) and criterion.get('suggested_score') is not None and criterion.get('confidence', 0) >= threshold and criterion.get('evidence'):
+            criterion.update(final_score=criterion['suggested_score'], confirmed=True, auto_confirmed=True)
+        updated.append(criterion)
+    return updated
+
+def schedule_similarity(db, assignment_id):
+    from .course_routes import latest_submissions
+    from .services.similarity import LANGUAGES, runtime, source_files, SimilarityError
+    try:
+        runtime()
+    except SimilarityError:
+        return
+    assignment = db.scalar(select(Assignment).where(Assignment.id == assignment_id).with_for_update())
+    enrolled = {u.id for u in db.scalars(select(User).where(User.role == 'student', User.active == True)).all() if assignment.course_id in (u.course_ids or [])}
+    submissions = [s for s in latest_submissions(db, [assignment_id]).values() if s.student_id in enrolled]
+    if any(s.status in {'submitted','ingesting','llm_processing','pre_review_running'} for s in submissions): return
+    for language in LANGUAGES:
+        selected = [s for s in submissions if source_files(s, language)]
+        if len(selected) < 2: continue
+        ids = sorted(s.id for s in selected)
+        prior = db.scalars(select(SimilarityRun).where(SimilarityRun.assignment_id == assignment_id, SimilarityRun.language == language)).all()
+        if any(sorted(r.submission_ids) == ids for r in prior): continue
+        run = SimilarityRun(assignment_id=assignment_id, created_by=assignment.created_by if hasattr(assignment,'created_by') else selected[0].student_id, language=language, submission_ids=ids)
+        db.add(run); db.flush()
+        job = enqueue(db,'similarity',run.id)
+        db.commit(); dispatch(job.id)
+
 def config_input(c):
     return {'id': c.id, 'tasks': c.tasks, 'thresholds': c.thresholds, 'version': c.version} if c else {'tasks': {}, 'thresholds': {}}
 
@@ -127,6 +158,7 @@ async def process_submission(db, job):
     env = settings.app_env if submission.public_data else 'pilot_sensitive'
     result = await run_review_pipeline(assignment_input(assignment), {'id': rubric.id, 'version': rubric.version, 'criteria': rubric.criteria}, config_input(config), models, submission.artifacts, app_env=env)
     review.criterion_results = [{**c, 'criterion_id': c.get('criterion_id', c.get('id')), 'final_score': None, 'confirmed': False, 'note': ''} for c in result.get('criteria', [])]
+    # Scores remain proposals until the reviewer confirms or edits them.
     review.annotations = [{**a, 'id': a.get('id') or uid(), 'status': 'pending', 'source': 'ai', 'visible_to_student': True} for a in result.get('annotations', [])]
     if not review.integrity or review.integrity.get('status') == 'mocked':
         review.integrity = run_integrity_check(submission.artifacts)
@@ -140,6 +172,7 @@ async def process_submission(db, job):
         db.add(Notification(user_id=review.reviewer_id, title='Работа готова к проверке', message=assignment.title, link=f'/review/{review.id}'))
     db.add(AuditEvent(action='review.draft_ready', entity_type='review', entity_id=review.id, payload_safe={'configId': review.agent_config_version_id, 'status': review.status}))
     db.commit()
+    schedule_similarity(db, assignment.id)
 
 async def process_eval(db, job):
     from .services.pipeline import run_evaluation

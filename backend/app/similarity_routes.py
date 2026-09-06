@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from .auth import current_user, require, ADMIN
 from .course_routes import course_scope, latest_submissions
 from .db import get_db
-from .models import Assignment, Course, SimilarityRun, User, AuditEvent, now
+from .models import Assignment, Course, SimilarityRun, Submission, User, AuditEvent, now
 from .serializers import iso
 from .jobs import enqueue, dispatch
 from .services.similarity import LANGUAGES, runtime, source_files, SimilarityError
@@ -25,9 +25,12 @@ def scope(db, user, assignment_id):
 def run_json(db, run, details=False):
     names = {u.id: u.name for u in db.scalars(select(User)).all()}
     sources = {s['id']: s for s in run.results.get('submissions', [])}
+    submissions = {s.id:s for s in db.scalars(select(Submission).where(Submission.id.in_(run.submission_ids))).all()}
     pairs = []
     for pair in run.results.get('pairs', []):
         pairs.append({**{k: v for k, v in pair.items() if details or k != 'matches'},
+                      'leftUrl': submissions[pair['leftId']].external_ref if pair['leftId'] in submissions else None,
+                      'rightUrl': submissions[pair['rightId']].external_ref if pair['rightId'] in submissions else None,
                       'leftName': names.get(sources.get(pair['leftId'], {}).get('studentId'), 'Студент'),
                       'rightName': names.get(sources.get(pair['rightId'], {}).get('studentId'), 'Студент'),
                       'decision': (run.decisions or {}).get(pair['id'], {'status': 'pending', 'comment': ''})})

@@ -880,8 +880,10 @@ async def run_review_pipeline(assignment: dict[str, Any], rubric: dict[str, Any]
         if error:
             errors.append(error)
             result = _abstention(criterion, pipeline_error_message(error))
-        elif result is None or (not result["abstained"] and result["confidence"] < abstain_threshold):
-            result = _abstention(criterion, "Уверенность ниже порога; ревьюер должен проверить критерий.")
+        elif result is None:
+            result = _abstention(criterion, "Оцените критерий вручную.")
+        elif not result["abstained"] and result["confidence"] < abstain_threshold:
+            result = {**result, "ai_suggested_score": result["suggested_score"], "suggested_score": None, "abstained": True, "annotations": [], "reason": result["reason"] + " Уверенность ниже порога; ревьюер должен проверить критерий."}
         if result and not result["abstained"] and agent_config.get("tasks", {}).get("annotation_generation"):
             try:
                 generated = AnnotationsOutput.model_validate(await infer("annotation_generation", {**context, "criterion_result": result}, AnnotationsOutput))

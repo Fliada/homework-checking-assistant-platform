@@ -425,7 +425,10 @@ def patch_config(assignment_id: str, version: int, body: dict, user: User = Depe
     if 'thresholds' in body:
         thresholds=body['thresholds']; abstain=thresholds.get('abstain',.6); critic=thresholds.get('critic',thresholds.get('critic_confidence',.6))
         if not all(isinstance(v,(int,float)) and 0<=v<=1 for v in [abstain,critic]): fail(422,'invalid_thresholds','Пороги должны быть от 0 до 1.')
-        c.thresholds={'abstain':abstain,'critic_confidence':critic}
+        display=thresholds.get('display', (c.thresholds or {}).get('display', .6))
+        auto=thresholds.get('autoConfirm', (c.thresholds or {}).get('auto_confirm', .95))
+        if not all(isinstance(v,(int,float)) and not isinstance(v,bool) and 0<=v<=1 for v in [display,auto]): fail(422,'invalid_thresholds','Пороги должны быть от 0 до 1.')
+        c.thresholds={'abstain':abstain,'critic_confidence':critic,'display':display,'auto_confirm':auto}
     c.status='draft'
     audit(db,user,'agent_config.updated','agent_config',c.id,{'hash':hashlib.sha256(json.dumps(c.tasks,sort_keys=True).encode()).hexdigest()}); db.commit(); return config_json(c)
 
@@ -727,7 +730,7 @@ def decide_annotation(review_id: str, annotation_id: str, body: dict, user: User
         if body['status'] not in ['pending','accepted','edited','rejected']: fail(422,'invalid_status','Неизвестное решение.')
         a['status']=body['status']
     if 'message' in body:
-        a['message']=text_field(body,'message',maximum=10000)
+        a['message']=text_field(body,'message',minimum=0,maximum=10000)
         if a['status']=='accepted': a['status']='edited'
     if 'criterionId' in body:
         if body['criterionId'] is not None and body['criterionId'] not in {c['id'] for c in get(db,Rubric,r.rubric_id).criteria}: fail(422,'invalid_criterion','Критерий отсутствует в рубрике.')
@@ -742,7 +745,7 @@ def add_annotation(review_id: str, body: dict, user: User = Depends(current_user
     r=edit_review(db,user,review_id); criterion_id=body.get('criterionId')
     if criterion_id and criterion_id not in {c['id'] for c in get(db,Rubric,r.rubric_id).criteria}: fail(422,'invalid_criterion','Критерий отсутствует в рубрике.')
     anchor=normalize_anchor(db,r,body.get('anchor',{}))
-    a={'id':uid(),'criterion_id':criterion_id,'category':text_field(body,'category',maximum=100) if 'category' in body else 'comment','source':'reviewer','status':'accepted','message':text_field(body,'message',maximum=10000),'visible_to_student':bool(body.get('visibleToStudent',True)),'source_anchor':anchor}
+    a={'id':uid(),'criterion_id':criterion_id,'category':text_field(body,'category',maximum=100) if 'category' in body else 'comment','source':'reviewer','status':'accepted','message':text_field(body,'message',minimum=0,maximum=10000),'visible_to_student':bool(body.get('visibleToStudent',True)),'source_anchor':anchor}
     r.annotations=[*r.annotations,a]; changed(r); audit(db,user,'review.annotation_created','review',r.id,{'annotationId':a['id']}); db.commit(); return review_json(db,r)
 
 @app.post(P+'/reviews/{review_id}/integrity/{signal_id}/decision')

@@ -313,11 +313,12 @@ describe('контроль решений ревьюера', () => {
       (screen.getByRole('spinbutton', { name: 'Оценка: HTTP server' }) as HTMLInputElement).value,
     ).toBe('');
   });
-  it('передаёт введённую оценку вместе с явным подтверждением', async () => {
+  it('подтверждает ручную оценку без чекбокса', async () => {
     const user = userEvent.setup();
     mount(<ReviewWorkspace />, fixture(), '/review/r1');
     await user.type(screen.getByRole('spinbutton', { name: 'Оценка: HTTP server' }), '7');
-    await user.click(screen.getByRole('checkbox', { name: 'Оценка проверена' }));
+    expect(screen.queryByRole('checkbox', {name: 'Оценка проверена'})).toBeNull();
+    await user.tab();
     await waitFor(() =>
       expect(mockedApi).toHaveBeenCalledWith(
         '/reviews/r1/criteria/c1',

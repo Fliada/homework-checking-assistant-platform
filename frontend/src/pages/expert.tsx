@@ -668,6 +668,9 @@ function ConfigEditor({ config }: { config: AgentConfig }) {
           )}
         </div>
         <div className="grid two section-gap">
+          <Field label="Порог отображения оценки ИИ" hint="Оценка показывается справа при уверенности не ниже этого значения.">
+            <input type="number" min={0} max={1} step={0.05} value={thresholds.display ?? 0.6} disabled={!editable} onChange={e => setThresholds({...thresholds, display: Number(e.target.value)})} />
+          </Field>
           <Field
             label="Порог воздержания"
             hint="Если уверенность ниже порога, агент оставляет решение ревьюеру."

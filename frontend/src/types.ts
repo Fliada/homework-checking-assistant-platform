@@ -86,6 +86,8 @@ export interface Submission {
   reviewId?: string | null;
 }
 export interface CriterionResult {
+  aiSuggestedScore?: number | null;
+  evidenceAnchors?: SourceAnchor[];
   criterionId: string;
   suggestedScore: number | null;
   finalScore: number | null;
@@ -103,6 +105,9 @@ export interface SourceAnchor {
   quote: string;
 }
 export interface Annotation {
+  relatedUrl?: string;
+  relatedCode?: string;
+  advice?: string;
   id: string;
   criterionId: string | null;
   category: string;
@@ -113,6 +118,7 @@ export interface Annotation {
   anchor: SourceAnchor;
 }
 export interface Review {
+  displayThreshold?: number;
   id: string;
   submissionId: string;
   reviewerId: string | null;
@@ -220,7 +226,7 @@ export interface AgentConfig {
   version: number;
   status: 'draft' | 'evaluated' | 'published' | 'archived';
   tasks: Record<TaskType, TaskConfig>;
-  thresholds: { abstain: number; critic: number };
+  thresholds: { abstain: number; critic: number; display?: number; autoConfirm?: number };
   createdAt: string;
   publishedAt: string | null;
 }

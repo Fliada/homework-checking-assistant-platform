@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useReviewSimilarity } from '../reviewSimilarity';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -33,7 +36,7 @@ import {
   segmentAnnotations,
   type AnnotationCategory,
 } from '../annotationCategories';
-import { AgentNotes } from './courses';
+
 import {
   highlightMatchesSegment,
   segmentMatchesCompletion,
@@ -59,6 +62,7 @@ export function ReviewWorkspace() {
   const submission = data.submissions.find((s) => s.id === review?.submissionId);
   const assignment = data.assignments.find((a) => a.id === submission?.assignmentId);
   const [fileId, setFileId] = useState('');
+  const similarity = useReviewSimilarity(assignment?.id, submission?.id, submission?.artifacts.find(f => f.id === fileId) || submission?.artifacts[0]);
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
   const [tab, setTab] = useState('criteria');
   const [newCategory, setNewCategory] = useState<AnnotationCategory>('logic');
@@ -94,6 +98,7 @@ export function ReviewWorkspace() {
         />
       </Card>
     );
+  const aiSuggestions = [...new Set(review.annotations.filter(a => a.source === 'ai' && a.status !== 'rejected').map(a => (a.advice || a.message).trim()).filter(Boolean))];
   const locked = ['confirmed', 'feedback_sent'].includes(review.status);
   const canDecide =
     !locked && (review.reviewerId === data.user.id || ['admin', 'owner'].includes(data.user.role));
@@ -321,7 +326,7 @@ export function ReviewWorkspace() {
                     )
                   }
                   onRangeSelect={(start, end) => setSelection({ start, end })}
-                  annotations={review.annotations}
+                  annotations={[...review.annotations, ...similarity.annotations]}
                   highlights={fileHighlights}
                   sourceFilter={sourceFilter}
                   language={languageForPath(file.path)}
@@ -398,7 +403,7 @@ export function ReviewWorkspace() {
             </div>
             <details>
               <summary className="small muted">Показать условие</summary>
-              <div className="task-text section-gap">{assignment.taskText}</div>
+              <div className="rendered-markdown section-gap"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{img: () => null}}>{assignment.taskText}</ReactMarkdown></div>
             </details>
           </Card>
         </div>
@@ -408,13 +413,6 @@ export function ReviewWorkspace() {
               По критериям: {rawScore} · Снижение за просрочку: {review.latePenalty} · Итог: {final}
             </div>
           )}
-          <Card>
-            <div className="card-head">
-              <h3>Что заметил агент</h3>
-              <Help text="Замечания LLM по критериям и сигналы проверки на ИИ (Codect + ru-ai-text-detector). На балл не влияют без решения ревьюера." />
-            </div>
-            <AgentNotes review={review} />
-          </Card>
           <Card>
             <div className="review-score">
               <div>
@@ -465,6 +463,9 @@ export function ReviewWorkspace() {
                     <ScoreRow
                       key={result.criterionId}
                       result={result}
+                      displayThreshold={review.displayThreshold ?? 0.6}
+                      artifacts={submission.artifacts}
+                      onJump={jump}
                       rubric={review.rubric}
                       reviewId={review.id}
                       disabled={!canDecide}
@@ -573,6 +574,16 @@ export function ReviewWorkspace() {
             )}
             {tab === 'feedback' && (
               <div className="form-stack">
+                {!locked && aiSuggestions.length > 0 && <section>
+                  <h3>Предложения ИИ<Help text="Советы из текущих замечаний агента. Добавьте подходящие в обратную связь и сохраните текст." /></h3>
+                  {aiSuggestions.map((suggestion, i) => <div className="ai-feedback-suggestion" key={i}>
+                    <p>{suggestion}</p>
+                    {canDecide && <Button className="sm" disabled={feedback.includes(suggestion)} onClick={() => {
+                      setFeedback(previous => [previous.trim(), suggestion].filter(Boolean).join('\n\n'));
+                      setFeedbackDirty(true);
+                    }}>{feedback.includes(suggestion) ? 'Добавлено' : 'Добавить в итог'}</Button>}
+                  </div>)}
+                </section>}
                 {!locked && (
                   <>
                     <div className="row between">
@@ -827,7 +838,7 @@ export function ReviewWorkspace() {
               </select>
             </Field>
             <Field label="Что нужно уточнить">
-              <textarea name="message" required />
+              <textarea name="message" />
             </Field>
             <p className="muted small">Предложение попадёт в следующую версию рубрики.</p>
             <Button variant="primary" busy={busy} type="submit">
@@ -887,6 +898,8 @@ function ArtifactView({
 }) {
   const root = useRef<HTMLDivElement>(null);
   const rangeSelected = useRef(false);
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  useEffect(() => setCategoryFilter('all'), [file.id, selection?.start, selection?.end]);
   const lineMode = file.reviewScope !== 'added_lines' && isCodePath(file.path);
   const rows = lineMode ? expandArtifactLines(file) : [];
   function captureSelection() {
@@ -914,13 +927,13 @@ function ArtifactView({
   }
   return (
     <>
-      {file.reviewScope === 'added_lines' && <p className="muted">Дифф PR: + добавлено, − удалено. Агент комментирует только добавленные строки.</p>}
       <div className="annotation-legend" aria-label="Цвета категорий">
+        <button type="button" className="category-label" aria-pressed={categoryFilter === 'all'} onClick={() => setCategoryFilter('all')}>Все</button>
         {Object.entries(annotationCategories).map(([key, label]) => (
-          <span key={key} className={`category-label category-${key}`}>
+          <button type="button" aria-label={`Фильтр: ${label}`} aria-pressed={categoryFilter === key} onClick={() => setCategoryFilter(categoryFilter === key ? 'all' : key)} key={key} className={`category-label category-${key}`}>
             <span className="category-dot" />
             {label}
-          </span>
+          </button>
         ))}
         {highlights.some((h) => h.status === 'pending') && (
           <span className="category-label category-ai">
@@ -947,6 +960,7 @@ function ArtifactView({
                 categories.includes(c as AnnotationCategory),
               );
               const aiHighlight = highlights.find((h) => highlightMatchesLine(h, row.lineNo));
+              if (categoryFilter !== 'all' && !linked.some(a => annotationCategory(a.category) === categoryFilter)) return null;
               const linkedCompletion = linked.some((a) =>
                 /graceful|shutdown|context|заверш/i.test(a.message),
               );
@@ -993,12 +1007,13 @@ function ArtifactView({
                       ))}
                     </span>
                   </span>
+                  <SimilarityHints annotations={linked}>
                   <span
                     className="source-text"
                     {...(syntax && language
                       ? { dangerouslySetInnerHTML: { __html: highlightLine(row.text || ' ', language) } }
                       : { children: row.text || ' ' })}
-                  />
+                  /></SimilarityHints>
                 </div>
               );
             })
@@ -1009,6 +1024,7 @@ function ArtifactView({
                 categories.includes(c as AnnotationCategory),
               );
               const aiHighlight = highlights.find((h) => highlightMatchesSegment(h, segment.anchor));
+              if (categoryFilter !== 'all' && !linked.some(a => annotationCategory(a.category) === categoryFilter)) return null;
               const linkedCompletion = linked.some((a) =>
                 /graceful|shutdown|context|заверш/i.test(a.message),
               );
@@ -1060,12 +1076,13 @@ function ArtifactView({
                       ))}
                     </span>
                   </span>
+                  <SimilarityHints annotations={linked}>
                   <span
                     className="source-text"
                     {...(syntax && language
                       ? { dangerouslySetInnerHTML: { __html: highlightLine(segment.text || ' ', language) } }
                       : { children: segment.text || ' ' })}
-                  />
+                  /></SimilarityHints>
                 </div>
               );
             })}
@@ -1074,23 +1091,62 @@ function ArtifactView({
   );
 }
 
+function SimilarityHints({annotations,children}: {annotations: Annotation[];children:ReactNode}) {
+  const [open,setOpen] = useState(false);
+  const matches = annotations.filter(a => a.category === 'similarity');
+  const urls = [...new Set(matches.map(a => a.relatedUrl).filter((url): url is string => !!url?.startsWith('https://github.com/')))];
+  return <span className={`source-text-wrap ${matches.length ? 'similarity-code' : ''}`} role={urls.length ? 'button' : undefined} tabIndex={urls.length ? 0 : undefined} aria-expanded={urls.length ? open : undefined}
+    onBlur={e => {if(!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false);}}
+    onClick={e => {if(urls.length && window.getSelection()?.isCollapsed !== false){e.stopPropagation();setOpen(!open);}}}
+    onKeyDown={e => {if(e.key==='Escape'){e.stopPropagation();setOpen(false);} if(e.target !== e.currentTarget) return; if(urls.length && (e.key==='Enter' || e.key===' ')){e.preventDefault();e.stopPropagation();setOpen(!open);}}}>
+    {children}
+    {open && urls.length > 0 && <span className="similarity-popup" onClick={e=>e.stopPropagation()}>
+      {urls.map((url,i) => <a key={url} href={url} target="_blank" rel="noreferrer" style={{display:'block'}}>Работа другого студента{urls.length > 1 ? ` ${i+1}` : ''}</a>)}
+    </span>}
+  </span>;
+}
+function CriterionReason({reason,artifacts,onJump}: {reason:string;artifacts:Artifact[];onJump:(anchor:SourceAnchor)=>void}) {
+  const targets: SourceAnchor[] = [];
+  let text = reason;
+  for (const file of artifacts) for (const segment of [...file.segments].sort((a,b)=>b.id.length-a.id.length)) {
+    if (!segment.id || !text.includes(segment.id)) continue;
+    const index=targets.length;
+    targets.push({artifactId:file.id,path:file.path,start:segment.anchor,end:segment.anchor,quote:segment.text});
+    text=text.split('`'+segment.id+'`').join(segment.id);
+    text=text.split(segment.id).join(`[${file.path}:${segment.anchor.replace('line:','')}](#source-${index})`);
+  }
+  text=text.replace(/\(?сегмент[а-я]*\s+(?=\[)/gi,'').replace(/(\]\(#source-\d+\))\)/g,'$1');
+  return <div className="rendered-markdown"><ReactMarkdown skipHtml components={{img:()=>null,a:({href,children}) => {
+    const index=href?.match(/^#source-(\d+)$/)?.[1];
+    return index !== undefined && targets[Number(index)] ? <button className="source-reference" onClick={()=>onJump(targets[Number(index)])}>{children}</button> : <span>{children}</span>;
+  }}}>{text}</ReactMarkdown></div>;
+}
 function ScoreRow({
+  artifacts, onJump,
+  displayThreshold,
   result,
   rubric,
   reviewId,
   disabled,
 }: {
+  artifacts: Artifact[];
+  onJump: (anchor: SourceAnchor) => void;
+  displayThreshold: number;
   result: CriterionResult;
   rubric: Rubric;
   reviewId: string;
   disabled: boolean;
 }) {
   const criterion = rubric.criteria.find((c) => c.id === result.criterionId)!;
-  const [value, setValue] = useState(result.finalScore === null ? '' : String(result.finalScore));
+  const hasAI = !result.abstained && result.suggestedScore !== null && result.confidence >= displayThreshold;
+  const initial = result.finalScore ?? (hasAI ? result.suggestedScore : null);
+  const [value, setValue] = useState(initial === null ? '' : String(initial));
+  const [edited, setEdited] = useState(false);
   const { run, busy, toast } = useAction();
   useEffect(() => {
-    setValue(result.finalScore === null ? '' : String(result.finalScore));
-  }, [result.finalScore]);
+    setValue(initial === null ? '' : String(initial));
+    setEdited(false);
+  }, [initial]);
   async function save(confirmed: boolean) {
     const score = Number(value);
     if (value === '' || !Number.isFinite(score) || score < 0 || score > criterion.maxScore) {
@@ -1105,7 +1161,7 @@ function ScoreRow({
     );
   }
   return (
-    <div className="criterion-result">
+    <div className={`criterion-result ${hasAI ? 'criterion-ai' : 'criterion-manual'}`}>
       <header>
         <div>
           <h3>
@@ -1113,9 +1169,7 @@ function ScoreRow({
             <Help text={criterion.description || criterion.title} />
           </h3>
           <span className="small muted">
-            {result.abstained
-              ? 'Оцените вручную'
-              : `Предложено: ${result.suggestedScore ?? '—'} · уверенность ${Math.round(result.confidence * 100)}%`}
+            {`ИИ: ${result.aiSuggestedScore ?? result.suggestedScore ?? '—'} баллов · уверенность ${Math.round(result.confidence * 100)}%${!hasAI ? ' · Оцените вручную' : ''}`}
           </span>
         </div>
         <div className="score-input">
@@ -1127,25 +1181,26 @@ function ScoreRow({
             max={criterion.maxScore}
             step="0.5"
             disabled={disabled || busy}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => { setValue(e.target.value); setEdited(true); }}
             onBlur={(e) => {
               if ((e.relatedTarget as HTMLInputElement)?.type === 'checkbox') return;
-              if (value !== '' && Number(value) !== result.finalScore) save(false);
+              if (edited && value !== '') save(true);
             }}
           />
           <span>/ {criterion.maxScore}</span>
         </div>
       </header>
-      <p>{result.reason}</p>
-      <label className="check-label">
+      <CriterionReason reason={result.reason} artifacts={artifacts} onJump={onJump} />
+      {(result.evidenceAnchors || []).map((anchor,i) => <button key={i} className="source-reference" onClick={()=>onJump(anchor)}>{anchor.path}:{anchor.start.replace('line:','')}{anchor.end !== anchor.start ? `–${anchor.end.replace('line:','')}` : ''}</button>)}
+      {hasAI && <label className="check-label">
         <input
           type="checkbox"
-          checked={result.confirmed}
+          checked={edited || result.confirmed}
           disabled={disabled || busy || value === ''}
           onChange={(e) => save(e.target.checked)}
         />
         Оценка проверена
-      </label>
+      </label>}
     </div>
   );
 }
@@ -1224,7 +1279,7 @@ function AnnotationForm({
           </select>
         </Field>
         <Field label="Комментарий">
-          <textarea name="message" required defaultValue={existing?.message || ''} rows={5} />
+          <textarea name="message" defaultValue={existing?.message || ''} rows={5} />
         </Field>
         <label className="check-label">
           <input

@@ -765,3 +765,14 @@ def test_eval_never_retries_failed_model_request(setup_review):
     assert len(requests)==1
     assert len(result['outputs'])==1
     assert config['tasks']['criterion_evaluation']['params']['max_retries']==2
+
+
+def test_low_confidence_preserves_ai_score_and_evidence(setup_review):
+    result=run_with_transport(setup_review, lambda request: response(model_response(request,score=1,confidence=0.3)))
+    criterion=result['criteria'][0]
+    assert criterion['abstained'] is True
+    assert criterion['suggested_score'] is None
+    assert criterion['ai_suggested_score']==1
+    assert criterion['confidence']==0.3
+    assert criterion['evidence']
+    assert result['draft_total'] is None

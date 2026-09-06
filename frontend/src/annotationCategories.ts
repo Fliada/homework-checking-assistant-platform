@@ -1,6 +1,7 @@
 import type { Annotation, Artifact } from './types';
 
 export const annotationCategories = {
+  similarity: 'Схожесть на работы других студентов',
   logic: 'Логика',
   requirement: 'Требование задания',
   quality: 'Качество кода',
