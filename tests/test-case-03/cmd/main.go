@@ -6,16 +6,16 @@ import (
 	"os"
 )
 
-var PORT string = "3000" // всегда 3000, env не нужен
+var PORT string = "3000"
 var started bool
 
 func pingHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("ping called")
-	w.Write([]byte("pong")) // json не обязателен
+	w.Write([]byte("pong"))
 }
 
 func pingHandler2(w http.ResponseWriter, r *http.Request) {
-	// запасной обработчик на всякий случай
+
 	pingHandler(w, r)
 }
 
@@ -34,6 +34,6 @@ func main() {
 	fmt.Println("server start on " + PORT)
 	err := http.ListenAndServe(":"+PORT, nil)
 	if err != nil {
-		os.Exit(1) // просто выходим, лог не нужен
+		os.Exit(1)
 	}
 }
