@@ -86,6 +86,10 @@ def run_job(job_id):
                 review = db.get(Review, job.entity_id)
                 entity = db.get(Submission, review.submission_id) if review else None
                 if review: review.status = 'needs_human'
+            if entity and job.kind == 'eval':
+                metrics = dict(entity.metrics or {})
+                metrics['progress_log'] = [*metrics.get('progress_log', []), {'time': now().isoformat(), 'event': 'run_failed', 'error': job.error}][-2000:]
+                entity.metrics = metrics
             if entity:
                 entity.status, entity.error = 'failed' if job.kind in {'eval', 'similarity'} else 'needs_human', job.error
         job.finished_at = now()
@@ -144,13 +148,31 @@ async def process_eval(db, job):
     assignment = db.get(Assignment, run.assignment_id)
     rubric = db.scalar(select(Rubric).where(Rubric.assignment_id == assignment.id, Rubric.status == 'published').order_by(Rubric.version.desc()))
     run.status = 'running'
+    run.outputs = []
     db.commit()
     examples = [{**r, 'level': r.get('level', r.get('type'))} for r in assignment.references if r.get('type', r.get('level')) in ['weak', 'medium', 'good']]
+    examples = examples[:1]
+    run.repetitions = 1
+    run.metrics = {**(run.metrics or {}), 'example_count': 1}
+    db.commit()
     tasks = config_input(config)
     if run.model_override_id:
         tasks = {**tasks, 'tasks': {name: {**task, 'model_id': run.model_override_id} for name,task in tasks['tasks'].items()}}
-    result = await run_evaluation(assignment_input(assignment), {'id': rubric.id, 'version': rubric.version, 'criteria': rubric.criteria}, tasks, [model_python(m) for m in db.scalars(select(ModelEndpoint)).all()], examples=examples, repetitions=run.repetitions, app_env=settings.app_env)
-    run.metrics, run.outputs = result.get('metrics', {}), result.get('outputs', [])
+    def progress(event):
+        event = dict(event)
+        output = event.pop('output', None)
+        metrics = dict(run.metrics or {})
+        logs = list(metrics.get('progress_log', []))
+        logs.append({'time': now().isoformat(), **event})
+        metrics['progress_log'] = logs[-2000:]
+        run.metrics = metrics
+        if output is not None:
+            run.outputs = [*(run.outputs or []), output]
+        db.commit()
+    progress({'event': 'run_started'})
+    result = await run_evaluation(assignment_input(assignment), {'id': rubric.id, 'version': rubric.version, 'criteria': rubric.criteria}, tasks, [model_python(m) for m in db.scalars(select(ModelEndpoint)).all()], examples=examples, repetitions=run.repetitions, app_env=settings.app_env, progress=progress)
+    progress({'event': 'run_completed' if result.get('status')=='completed' else 'run_failed'})
+    run.metrics, run.outputs = {**result.get('metrics', {}), 'progress_log': (run.metrics or {}).get('progress_log', [])}, result.get('outputs', [])
     run.status, run.error = result.get('status', 'completed'), pipeline_error_message(result['error']) if result.get('error') else None
     if run.status == 'completed' and config.status == 'draft': config.status = 'evaluated'
     db.add(AuditEvent(action='eval.completed', entity_type='eval', entity_id=run.id, payload_safe={'status': run.status}))

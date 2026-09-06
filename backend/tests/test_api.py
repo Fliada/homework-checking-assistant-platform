@@ -506,3 +506,26 @@ def test_integrity_signal_decision_persists(client):
         stored = db.get(Review, 'demo-review-1').integrity
         assert stored['signals'][0]['status'] == 'accepted'
         assert stored['highlights'][0]['status'] == 'accepted'
+
+@pytest.mark.parametrize('status,metadata,health', [(200,{'id':'claude-sonnet-4-6','type':'model'},'ok'),(404,{},'http_404'),(401,{},'http_401'),(200,{},'invalid_response')])
+def test_anthropic_catalog_and_probe(client, monkeypatch, status, metadata, health):
+    import httpx
+    monkeypatch.setenv('CLAUDE_API_KEY','test-anthropic-key')
+    monkeypatch.setenv('ALLOW_PUBLIC_LLM','true')
+    requests=[]
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(status,json=metadata)
+    original=httpx.AsyncClient
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(handler),**kwargs))
+    auth=headers(client,'admin')
+    model=gemini_profile(client,auth,provider='anthropic',baseUrl='https://api.anthropic.com/v1/messages',modelName='claude-sonnet-4-6',apiKeyEnv='CLAUDE_API_KEY')
+    assert model['baseUrl']=='https://api.anthropic.com/v1'
+    assert model['capabilities']['jsonMode'] is False
+    result=client.post('/api/v1/admin/models/'+model['id']+'/probe',headers=auth)
+    assert result.json()['health']==health
+    assert str(requests[0].url)=='https://api.anthropic.com/v1/models/claude-sonnet-4-6'
+    assert requests[0].method=='GET' and not requests[0].content
+    assert requests[0].headers['x-api-key']=='test-anthropic-key'
+    assert requests[0].headers['anthropic-version']=='2023-06-01'
+    assert 'test-anthropic-key' not in result.text

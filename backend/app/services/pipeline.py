@@ -438,9 +438,11 @@ def validate_model_endpoint(model: dict[str, Any], *, app_env: str | None = None
     if env_name and not re.fullmatch(r"[A-Z][A-Z0-9_]*", env_name):
         raise PipelineError("configuration_error:invalid_credential_reference")
     token = os.getenv(env_name, "") if env_name else ""
-    requires_auth = model.get("provider") == "gemini" or model.get("capabilities", {}).get("auth_required", not local)
+    requires_auth = model.get("provider") in {"gemini", "anthropic"} or model.get("capabilities", {}).get("auth_required", not local)
     if requires_auth and not token:
         raise PipelineError("configuration_error:credential_missing")
+    if model.get("provider") == "anthropic":
+        return {"x-api-key": token, "anthropic-version": "2023-06-01"}
     if model.get("provider") == "gemini":
         return {"x-goog-api-key": token}
     return {"Authorization": f"Bearer {token}"} if token else {}
@@ -490,6 +492,19 @@ def _effective_params(model: dict[str, Any], task: dict[str, Any]) -> tuple[dict
     for key in ("max_tokens", "max_completion_tokens"):
         if key in combined and (not isinstance(combined[key], int) or not 1 <= combined[key] <= 32_000):
             raise PipelineError("configuration_error:token_limit")
+    if model.get("provider") == "anthropic":
+        if set(combined) - {"temperature", "top_p", "stop", "max_tokens", "max_completion_tokens"}:
+            raise PipelineError("configuration_error:unsupported_inference_parameter")
+        if "max_completion_tokens" in combined:
+            combined["max_tokens"] = combined.pop("max_completion_tokens")
+        if "temperature" in combined and "top_p" in combined:
+            # Shared agent profiles contain both; Anthropic accepts only one.
+            combined.pop("top_p")
+        if "temperature" in combined and not 0 <= combined["temperature"] <= 1:
+            raise PipelineError("configuration_error:unsupported_inference_parameter")
+        if "stop" in combined:
+            stops = combined.pop("stop")
+            combined["stop_sequences"] = [stops] if isinstance(stops, str) else stops
     return combined, timeout, retries
 
 
@@ -592,7 +607,11 @@ async def _call_model(task_type: str, context: dict[str, Any], schema: type[Base
     messages = [{"role": "system", "content": system}, {"role": "user", "content": json.dumps(safe_context, ensure_ascii=False)}]
     capabilities = model.get("capabilities", {})
     native_gemini = model.get("provider") == "gemini"
-    if native_gemini:
+    native_anthropic = model.get("provider") == "anthropic"
+    if native_anthropic:
+        payload = {"model": model["model_name"], "system": system, "messages": messages[1:], **params}
+        endpoint = model["base_url"].rstrip("/") + "/messages"
+    elif native_gemini:
         generation_config = dict(params)
         if capabilities.get("json_schema"):
             generation_config.update(responseMimeType="application/json", responseJsonSchema=_gemini_json_schema(schema.model_json_schema()))
@@ -617,6 +636,8 @@ async def _call_model(task_type: str, context: dict[str, Any], schema: type[Base
         for attempt in range(retries + 1):
             started = time.monotonic()
             effective_messages = {"system": system, "contents": payload["contents"]} if native_gemini else payload["messages"]
+            if native_anthropic:
+                effective_messages = {"system": system, "messages": payload["messages"]}
             prompt_hash = hashlib.sha256(json.dumps(effective_messages, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
             metadata = {"model_id": model["id"], "model_name": model["model_name"], "provider": model.get("provider"), "base_url": model["base_url"], "task_type": task_type, "agent_config_version_id": config.get("id"), "effective_params": {**params, "timeout_seconds": timeout, "max_retries": retries}, "prompt_hash": prompt_hash, "attempt": attempt + 1, "input_tokens": None, "output_tokens": None, "error_code": None}
             try:
@@ -629,7 +650,18 @@ async def _call_model(task_type: str, context: dict[str, Any], schema: type[Base
                     response = await _json_request(client, "POST", endpoint, headers=headers, json=payload, timeout=timeout, max_bytes=2_000_000)
                 if not isinstance(response, dict):
                     raise PipelineError("model_invalid_response")
-                if native_gemini:
+                if native_anthropic:
+                    usage = response.get("usage", {})
+                    input_tokens = usage.get("input_tokens", 0) + usage.get("cache_creation_input_tokens", 0) + usage.get("cache_read_input_tokens", 0)
+                    output_tokens = usage.get("output_tokens", 0)
+                    metadata.update(input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=input_tokens + output_tokens, actual_model=response.get("model"))
+                    if response.get("stop_reason") not in {"end_turn", "stop_sequence"}:
+                        raise PipelineError("model_incomplete_output")
+                    blocks = response.get("content", [])
+                    if not isinstance(blocks, list):
+                        raise PipelineError("model_invalid_response")
+                    content = "".join(b["text"] for b in blocks if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str))
+                elif native_gemini:
                     content = _gemini_response_text(response, metadata)
                 else:
                     usage = response.get("usage", {})
@@ -748,7 +780,7 @@ def _abstention(criterion: dict[str, Any], reason: str) -> dict[str, Any]:
     return {"criterion_id": criterion["id"], "title": criterion["title"], "max_score": criterion["max_score"], "suggested_score": None, "final_score": None, "confidence": 0, "abstained": True, "reason": reason, "evidence": [], "annotations": [], "status": "pending"}
 
 
-async def run_review_pipeline(assignment: dict[str, Any], rubric: dict[str, Any], agent_config: dict[str, Any], models: list[dict[str, Any]], artifacts: list[dict[str, Any]], *, app_env: str | None = None, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+async def run_review_pipeline(assignment: dict[str, Any], rubric: dict[str, Any], agent_config: dict[str, Any], models: list[dict[str, Any]], artifacts: list[dict[str, Any]], *, app_env: str | None = None, client: httpx.AsyncClient | None = None, progress=None) -> dict[str, Any]:
     criteria = rubric.get("criteria", [])
     all_segments = _segments(artifacts)
     context_incomplete = any(item.get("snapshot_complete") is False for item in artifacts)
@@ -788,12 +820,16 @@ async def run_review_pipeline(assignment: dict[str, Any], rubric: dict[str, Any]
 
     async def infer(task_type: str, context: dict[str, Any], schema: type[BaseModel]) -> dict[str, Any]:
         nonlocal quota_exhausted
+        event = {"stage": task_type, "criterion": context.get("criterion", {}).get("id")}
+        if progress: progress({**event, "event": "stage_started"})
         try:
             result = await _call_model(task_type, context, schema, agent_config, models, calls, app_env=app_env, public_data=public_data, client=client)
         except PipelineError as exc:
+            if progress: progress({**event, "event": "stage_failed", "error": pipeline_error_message(str(exc))})
             if str(exc) == "upstream_http_429":
                 quota_exhausted = True
             raise
+        if progress: progress({**event, "event": "stage_completed"})
         outputs.append({"task_type": task_type, "criterion_id": context.get("criterion", {}).get("id"), "output": sanitize_payload(result)})
         return result
 
@@ -880,25 +916,35 @@ def compose_feedback(review: dict[str, Any]) -> str:
     return "\n\n".join(lines)
 
 
-async def run_evaluation(assignment: dict[str, Any], rubric: dict[str, Any], agent_config: dict[str, Any], models: list[dict[str, Any]], examples: list[dict[str, Any]], *, repetitions: int = 3, model_id: str | None = None, app_env: str | None = None, client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+async def run_evaluation(assignment: dict[str, Any], rubric: dict[str, Any], agent_config: dict[str, Any], models: list[dict[str, Any]], examples: list[dict[str, Any]], *, repetitions: int = 1, model_id: str | None = None, app_env: str | None = None, client: httpx.AsyncClient | None = None, progress=None) -> dict[str, Any]:
     if not 1 <= repetitions <= 10:
         raise PipelineError("eval_repetitions_out_of_range")
-    if sorted(item.get("level", "") for item in examples) != ["good", "medium", "weak"]:
-        raise PipelineError("eval_requires_weak_medium_good")
+    if not examples or any(item.get("level") not in {"good", "medium", "weak"} for item in examples):
+        raise PipelineError("eval_requires_examples")
+    repetitions = 1
+    examples = examples[:1]
     config = copy.deepcopy(agent_config)
+    for task in config.get("tasks", {}).values():
+        task["params"] = {**task.get("params", {}), "max_retries": 0}
     if model_id:
         config.setdefault("tasks", {}).setdefault("criterion_evaluation", {})["model_id"] = model_id
     prepared = []
     for example in examples:
+        if progress: progress({"event": "loading_example", "level": example["level"]})
         prepared.append(example if "artifacts" in example else await load_github_example(example, client=client))
     outputs = []
     for repeat in range(1, repetitions + 1):
-        for example in prepared:
-            result = await run_review_pipeline(assignment, rubric, config, models, example["artifacts"], app_env=app_env, client=client)
-            outputs.append({"level": example["level"], "repetition": repeat, "head_sha": example.get("head_sha", example.get("ref")), "agent_config_version_id": config.get("id"), **result})
+        for example_index, example in enumerate(prepared):
+            def report(event):
+                if progress: progress({"level": example["level"], "repetition": repeat, **event})
+            report({"event": "example_started"})
+            result = await run_review_pipeline(assignment, rubric, config, models, example["artifacts"], app_env=app_env, client=client, progress=report)
+            outputs.append({"example_index": example_index, "example_name": example.get("name", ""), "level": example["level"], "repetition": repeat, "head_sha": example.get("head_sha", example.get("ref")), "agent_config_version_id": config.get("id"), **result})
+            report({"event": "example_completed", "error": pipeline_error_message(result["error"]) if result.get("error") else None, "completed": len(outputs), "total": repetitions * len(prepared), "output": outputs[-1]})
     measured_triples = []
     for repeat in range(1, repetitions + 1):
-        totals = {output["level"]: output["draft_total"] for output in outputs if output["repetition"] == repeat}
+        groups = {level: [o["draft_total"] for o in outputs if o["repetition"] == repeat and o["level"] == level] for level in ("weak", "medium", "good")}
+        totals = {level: statistics.mean(scores) if scores and all(score is not None for score in scores) else None for level, scores in groups.items()}
         if all(totals.get(level) is not None for level in ("weak", "medium", "good")):
             measured_triples.append(totals["weak"] < totals["medium"] < totals["good"])
     stability = {}
@@ -909,7 +955,7 @@ async def run_evaluation(assignment: dict[str, Any], rubric: dict[str, Any], age
     evidence_count = sum(len(result["evidence"]) for result in results)
     raw_evidence = 0
     raw_valid_evidence = 0
-    artifact_map = {example["level"]: _segments(example["artifacts"]) for example in prepared}
+    artifact_map = {index: _segments(example["artifacts"]) for index, example in enumerate(prepared)}
     for output in outputs:
         for call_output in output["raw_outputs"]:
             raw = call_output["output"]
@@ -922,11 +968,11 @@ async def run_evaluation(assignment: dict[str, Any], rubric: dict[str, Any], age
             for item in evidence_items:
                 raw_evidence += 1
                 try:
-                    _validate_evidence([Evidence.model_validate(item)], artifact_map[output["level"]])
+                    _validate_evidence([Evidence.model_validate(item)], artifact_map[output["example_index"]])
                     raw_valid_evidence += 1
                 except (PipelineError, ValidationError):
                     pass
     calls = [call for output in outputs for call in output["model_calls"]]
     successful_calls = [call for call in calls if not call.get("error_code")]
     failed = any(output["error"] for output in outputs)
-    return {"status": "failed" if failed else "completed", "agent_config_version_id": config.get("id"), "outputs": outputs, "metrics": {"ordering_accuracy": statistics.mean(measured_triples) if measured_triples else None, "ordering_measured_triples": len(measured_triples), "stability": stability, "anchor_validity": raw_valid_evidence / raw_evidence if raw_evidence else None, "anchor_count": raw_evidence, "accepted_evidence_count": evidence_count, "abstain_rate": sum(item["abstained"] for item in results) / len(results) if results else None, "model_calls": len(calls), "successful_model_calls": len(successful_calls), "latency_ms": sum(item["latency_ms"] for item in calls), "input_tokens": sum(item["input_tokens"] or 0 for item in calls) if any(item["input_tokens"] is not None for item in calls) else None, "output_tokens": sum(item["output_tokens"] or 0 for item in calls) if any(item["output_tokens"] is not None for item in calls) else None, "cost": None}, "error": next((output["error"] for output in outputs if output["error"]), None)}
+    return {"status": "failed" if failed else "completed", "agent_config_version_id": config.get("id"), "outputs": outputs, "metrics": {"example_count": len(prepared), "ordering_accuracy": statistics.mean(measured_triples) if measured_triples else None, "ordering_measured_triples": len(measured_triples), "stability": stability, "anchor_validity": raw_valid_evidence / raw_evidence if raw_evidence else None, "anchor_count": raw_evidence, "accepted_evidence_count": evidence_count, "abstain_rate": sum(item["abstained"] for item in results) / len(results) if results else None, "model_calls": len(calls), "successful_model_calls": len(successful_calls), "latency_ms": sum(item["latency_ms"] for item in calls), "input_tokens": sum(item["input_tokens"] or 0 for item in calls) if any(item["input_tokens"] is not None for item in calls) else None, "output_tokens": sum(item["output_tokens"] or 0 for item in calls) if any(item["output_tokens"] is not None for item in calls) else None, "cost": None}, "error": next((output["error"] for output in outputs if output["error"]), None)}

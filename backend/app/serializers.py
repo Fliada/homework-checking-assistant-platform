@@ -137,4 +137,4 @@ def eval_json(db, e):
         calls=o.get('model_calls',[])
         model_ids=list(dict.fromkeys(call.get('model_id','') for call in calls))
         outputs.append({'example':o.get('example',o.get('level','')),'repetition':o.get('repetition',1),'score':o.get('draft_total',o.get('score')),'modelId':', '.join(model_ids),'error':o.get('error')})
-    return {'id':e.id,'assignmentId':e.assignment_id,'configVersion':c.version,'repetitions':e.repetitions,'status':e.status,'createdAt':iso(e.created_at),'error':e.error,'metrics':{k:v for k,v in metrics.items() if v is not None},'outputs':outputs,'rawMetrics':m}
+    return {'id':e.id,'assignmentId':e.assignment_id,'configVersion':c.version,'exampleCount':m.get('example_count',len(e.outputs)//max(1,e.repetitions) if e.outputs else 3),'repetitions':e.repetitions,'status':e.status,'createdAt':iso(e.created_at),'error':e.error,'metrics':{k:v for k,v in metrics.items() if v is not None},'outputs':outputs,'rawMetrics':m,'logs':m.get('progress_log',[])}

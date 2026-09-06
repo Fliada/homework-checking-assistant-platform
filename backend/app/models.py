@@ -131,7 +131,7 @@ class EvalRun(Base):
     assignment_id: Mapped[str] = mapped_column(ForeignKey('assignments.id'))
     agent_config_version_id: Mapped[str] = mapped_column(ForeignKey('agent_configs.id'))
     model_override_id: Mapped[str | None] = mapped_column(ForeignKey('model_endpoints.id'), nullable=True)
-    repetitions: Mapped[int] = mapped_column(Integer, default=3)
+    repetitions: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(String(40), default='queued')
     metrics: Mapped[dict] = mapped_column(JSON, default=dict)
     outputs: Mapped[list] = mapped_column(JSON, default=list)

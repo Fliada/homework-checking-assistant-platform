@@ -549,6 +549,13 @@ const providerPresets: Record<
   string,
   { label: string; baseUrl: string; apiKeyEnv: string; modelName: string; format: string }
 > = {
+  anthropic: {
+    label: 'Anthropic · Claude',
+    baseUrl: 'https://api.anthropic.com/v1',
+    apiKeyEnv: 'ANTHROPIC_API_KEY',
+    modelName: 'claude-sonnet-4-6',
+    format: 'text',
+  },
   gemini: {
     label: 'Gemma · Google AI Studio',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
@@ -774,10 +781,11 @@ function ModelForm({ model, onClose }: { model: ModelEndpoint | 'new'; onClose: 
         </div>
         <Field
           label="Формат ответа"
-          hint="Для Gemma оставьте JSON по инструкции: сервер проверит структуру и доказательства в ответе. Режимы JSON и JSON Schema включайте только при их поддержке API выбранной модели."
+          hint="Для Gemma и Anthropic используйте JSON по инструкции: сервер проверит структуру и доказательства в ответе. Режимы JSON и JSON Schema включайте только при их поддержке API выбранной модели."
         >
           <select
             name="responseFormat"
+            disabled={connection.provider === 'anthropic'}
             value={connection.format}
             onChange={(e) => setConnection({ ...connection, format: e.target.value })}
           >
@@ -1156,7 +1164,6 @@ export function Evals() {
   const { run, busy } = useAction();
   const [assignmentId, setAssignmentId] = useState(data.assignments[0]?.id || '');
   const [version, setVersion] = useState('');
-  const [repetitions, setRepetitions] = useState(3);
   const [details, setDetails] = useState<string | null>(null);
   const configs = data.configs.filter(
     (c) => c.assignmentId === assignmentId && c.status !== 'archived',
@@ -1169,7 +1176,7 @@ export function Evals() {
     e.preventDefault();
     await run(
       '/evals',
-      { assignmentId, configVersion: Number(version || configs[0]?.version), repetitions },
+      { assignmentId, configVersion: Number(version || configs[0]?.version), repetitions: 1 },
       'POST',
       'Тестирование запущено',
     );
@@ -1180,7 +1187,7 @@ export function Evals() {
       <PageTitle
         title="Тестирование агента"
         eyebrow="Калибровочные примеры"
-        help="Запуск оценивает слабое, среднее и хорошее решения по одной рубрике несколько раз. Метрики появятся только после реального завершения."
+        help="Запуск проверяет только первый приложенный пример решения один раз. Автоматические повторы запросов при ошибках отключены. Метрики появятся только после реального завершения."
       />
       <Card>
         <form onSubmit={start} className="toolbar" style={{ margin: 0, alignItems: 'flex-end' }}>
@@ -1214,17 +1221,6 @@ export function Evals() {
               ))}
             </select>
           </Field>
-          <Field label="Повторов">
-            <input
-              type="number"
-              min={1}
-              max={10}
-              value={repetitions}
-              onChange={(e) => setRepetitions(Number(e.target.value))}
-              style={{ width: 85 }}
-              required
-            />
-          </Field>
           <span className="spacer" />
           <Button
             variant="primary"
@@ -1242,12 +1238,11 @@ export function Evals() {
           label="Порядок уровней"
           value={pct(latest?.metrics.orderingAccuracy)}
           tone="purple"
-          detail="слабое < среднее < хорошее"
+          detail="сравнение средних оценок; нужны все три категории"
         />
         <Metric
-          label="Разброс оценки"
-          value={latest?.metrics.stability?.toFixed(2) ?? '—'}
-          detail="между повторами"
+          label="Обработано примеров"
+          value={latest ? `${latest.outputs.length} / ${latest.repetitions * (latest.exampleCount ?? 3)}` : '—'}
         />
         <Metric
           label="Валидные ссылки на фрагменты"
@@ -1283,7 +1278,7 @@ export function Evals() {
                 <tr>
                   <th>Задание / дата</th>
                   <th>Конфигурация</th>
-                  <th>Повторы</th>
+                  <th>Объём прогона</th>
                   <th>Статус</th>
                   <th>Порядок уровней</th>
                   <th />
@@ -1297,9 +1292,11 @@ export function Evals() {
                       <small>{formatDate(e.createdAt, true)}</small>
                     </td>
                     <td>v{e.configVersion}</td>
-                    <td>{e.repetitions} × 3 уровня</td>
+                    <td>{`${e.exampleCount ?? 3} примеров × ${e.repetitions}`}</td>
                     <td>
                       <Status value={e.status} />
+                      <small>Готово примеров: {e.outputs.length} / {e.repetitions * (e.exampleCount ?? 3)}</small>
+                      {e.logs?.length ? <small>{evalLogText(e.logs[e.logs.length - 1])}</small> : null}
                       {e.error && <small className="inline-error">{e.error}</small>}
                     </td>
                     <td>{pct(e.metrics.orderingAccuracy)}</td>
@@ -1317,13 +1314,19 @@ export function Evals() {
         ) : (
           <Empty
             title="Запусков пока нет"
-            detail="Добавьте материалы трёх уровней и настройте модели для задания."
+            detail="Добавьте хотя бы один пример решения и настройте модели для задания."
           />
         )}
       </Card>
       {selected && <EvalDetails evaluation={selected} onClose={() => setDetails(null)} />}
     </>
   );
+}
+function evalLogText(log: NonNullable<EvalRun['logs']>[number]) {
+  const events: Record<string, string> = {run_started:'Запуск начат', loading_example:'Загрузка примера', example_started:'Проверка примера', stage_started:'Этап начат', stage_completed:'Этап завершён', stage_failed:'Ошибка этапа', example_completed:'Пример обработан', run_completed:'Запуск завершён', run_failed:'Запуск завершён с ошибкой'};
+  const stages: Record<string, string> = {artifact_triage:'Отбор фрагментов', criterion_evaluation:'Оценка критерия', review_critic:'Проверка оценки', annotation_generation:'Комментарии'};
+  const levels: Record<string, string> = {weak:'Слабый', medium:'Средний', good:'Хороший'};
+  return [events[log.event] || log.event, log.level && levels[log.level], log.repetition && `повтор ${log.repetition}`, log.stage && (stages[log.stage] || log.stage), log.criterion].filter(Boolean).join(' · ');
 }
 function EvalDetails({ evaluation: e, onClose }: { evaluation: EvalRun; onClose: () => void }) {
   const data = useData();
@@ -1350,6 +1353,16 @@ function EvalDetails({ evaluation: e, onClose }: { evaluation: EvalRun; onClose:
         </Button>
       </div>
       {e.error && <div className="notice red section-gap">{e.error}</div>}
+      <section className="section-gap">
+        <h3>Журнал запуска</h3>
+        <p>Готово примеров: {e.outputs.length} / {e.repetitions * (e.exampleCount ?? 3)}</p>
+        <div role="log" aria-label="Журнал запуска" style={{maxHeight: 320, overflowY: 'auto'}}>
+          {e.logs?.length ? e.logs.map((log, i) => <div key={`${log.time}-${i}`} style={{padding: '8px 0', borderBottom: '1px solid #eee'}}>
+            <small>{new Date(log.time).toLocaleTimeString('ru-RU')}</small> {evalLogText(log)}
+            {log.error && <div className="inline-error">{log.error}</div>}
+          </div>) : <p className="muted">Для этого запуска журнал ещё не записан.</p>}
+        </div>
+      </section>
       {e.outputs.length ? (
         <div className="table-wrap section-gap">
           <table>

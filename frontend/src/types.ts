@@ -221,6 +221,8 @@ export interface AgentConfig {
   publishedAt: string | null;
 }
 export interface EvalRun {
+  exampleCount?: number;
+  logs?: { time: string; event: string; level?: string; repetition?: number; stage?: string; criterion?: string; error?: string; completed?: number; total?: number }[];
   id: string;
   assignmentId: string;
   configVersion: number;

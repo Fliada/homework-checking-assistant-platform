@@ -540,6 +540,7 @@ function ConfigEditor({ config }: { config: AgentConfig }) {
   const [dirty, setDirty] = useState(false);
   const editable = ['draft', 'evaluated'].includes(config.status);
   const current = tasks[task];
+  const isAnthropic = models.find((m) => m.id === current.modelId)?.provider === 'anthropic';
   const path = `/assignments/${config.assignmentId}/agent-config/versions/${config.version}`;
   function update(values: Partial<typeof current>) {
     setTasks((t) => ({ ...t, [task]: { ...t[task], ...values } }));
@@ -632,20 +633,20 @@ function ConfigEditor({ config }: { config: AgentConfig }) {
                     type="number"
                     value={current.temperature}
                     min={0}
-                    max={2}
+                    max={isAnthropic ? 1 : 2}
                     step="0.1"
                     disabled={!editable}
                     onChange={(e) => update({ temperature: Number(e.target.value) })}
                   />
                 </Field>
-                <Field label="Top P">
+                <Field label="Top P" hint={isAnthropic ? 'Для Anthropic применяется Temperature; Top P не отправляется.' : undefined}>
                   <input
                     type="number"
                     value={current.topP}
                     min={0.01}
                     max={1}
                     step="0.05"
-                    disabled={!editable}
+                    disabled={!editable || isAnthropic}
                     onChange={(e) => update({ topP: Number(e.target.value) })}
                   />
                 </Field>
@@ -710,7 +711,7 @@ function ConfigEditor({ config }: { config: AgentConfig }) {
               busy={busy}
               disabled={dirty}
               onClick={() =>
-                run(`${path}/eval`, { repetitions: 3 }, 'POST', 'Тестирование запущено')
+                run(`${path}/eval`, { repetitions: 1 }, 'POST', 'Тестирование запущено')
               }
             >
               <FlaskConical size={15} />

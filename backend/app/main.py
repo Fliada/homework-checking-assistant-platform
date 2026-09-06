@@ -463,8 +463,10 @@ def fill_model(m,body):
     if forbidden: fail(422,'secret_not_allowed','Секрет задаётся только в окружении сервиса.')
     for incoming,field in {'name':'name','provider':'provider','group':'group','baseUrl':'base_url','modelName':'model_name','apiKeyEnv':'api_key_env'}.items():
         if incoming in body: setattr(m,field,text_field(body,incoming,maximum=500))
-    if m.provider not in ['openai','openai_compatible','lm_studio','vllm','ollama','private','gemini']: fail(422,'invalid_provider','Неизвестный провайдер.')
+    if m.provider not in ['openai','openai_compatible','lm_studio','vllm','ollama','private','gemini','anthropic']: fail(422,'invalid_provider','Неизвестный провайдер.')
     if not re.fullmatch(r'[A-Z][A-Z0-9_]{1,99}',m.api_key_env): fail(422,'invalid_env_ref','Укажите имя переменной окружения, например OPENAI_API_KEY.')
+    if m.provider=='anthropic':
+        m.base_url=m.base_url.rstrip('/').removesuffix('/messages')
     url=urlparse(m.base_url)
     if url.scheme not in ['http','https'] or not url.hostname or url.username or url.password or url.query or url.fragment: fail(422,'invalid_endpoint','Укажите URL без пароля, query-параметров и фрагмента.')
     if 'enabled' in body: m.enabled=bool(body['enabled'])
@@ -492,6 +494,9 @@ def fill_model(m,body):
         capabilities['max_context_tokens']=maximum
         capabilities.setdefault('json_mode',not (m.provider=='gemini' or m.model_name.lower().startswith('gemma')))
         m.capabilities=capabilities
+    if m.provider=='anthropic':
+        m.capabilities={**(m.capabilities or {}),'json_mode':False,'json_schema':False}
+        if (m.default_params or {}).get('temperature',0.2)>1: fail(422,'invalid_params','Для Anthropic temperature должна быть от 0 до 1.')
     if tuple(getattr(m,field) for field in connection_fields)!=previous_connection:
         m.health='unknown'
 
@@ -525,12 +530,14 @@ async def probe_model(model_id: str, user: User = Depends(current_user), db: Ses
     require(user,ADMIN); m=get(db,ModelEndpoint,model_id)
     if not m.enabled: fail(409,'disabled_model','Модель отключена.')
     key=os.getenv(m.api_key_env)
-    if m.provider in {'openai','gemini'} and not key:
+    if m.provider in {'openai','gemini','anthropic'} and not key:
         m.health='missing'
     else:
         try:
             request_headers=validate_model_endpoint(model_python(m),app_env=settings.app_env,public_data=True)
             endpoint=m.base_url.rstrip('/')+'/models'
+            if m.provider=='anthropic':
+                endpoint+='/' + quote(m.model_name,safe='')
             if m.provider=='gemini':
                 name=m.model_name.removeprefix('models/')
                 endpoint+='/' + quote(name,safe='')
@@ -538,6 +545,10 @@ async def probe_model(model_id: str, user: User = Depends(current_user), db: Ses
             async with httpx.AsyncClient(timeout=15,follow_redirects=False) as client:
                 response=await client.get(endpoint,headers=request_headers)
                 m.health='ok' if response.status_code==200 else f'http_{response.status_code}'
+                if m.provider=='anthropic' and response.status_code==200:
+                    metadata=response.json()
+                    if not isinstance(metadata,dict) or metadata.get('type')!='model' or not metadata.get('id'):
+                        m.health='invalid_response'
                 if m.provider=='gemini' and response.status_code==200:
                     metadata=response.json()
                     if not isinstance(metadata,dict):
@@ -919,13 +930,13 @@ def create_eval(body: dict, background: BackgroundTasks, user: User = Depends(cu
     c=scoped_config(db,user,assignment_id,version) if version else active_config(db,assignment_id)
     if not c: fail(409,'config_required','Создайте конфигурацию агента.')
     if not active_rubric(db,assignment_id): fail(409,'rubric_required','Опубликуйте рубрику перед eval.')
-    if not {'weak','medium','good'}.issubset({r.get('type') for r in a.references}): fail(409,'calibration_required','Добавьте примеры weak, medium и good.')
-    repetitions=body.get('repetitions',3)
-    if not isinstance(repetitions,int) or not 1<=repetitions<=10: fail(422,'invalid_repetitions','Допустимо 1–10 повторов.')
+    example_count=sum(r.get('type') in {'weak','medium','good'} for r in a.references)
+    if not example_count: fail(409,'calibration_required','Добавьте хотя бы один пример решения для тестирования.')
+    repetitions=1
     if db.scalar(select(EvalRun).where(EvalRun.agent_config_version_id==c.id,EvalRun.status.in_(['queued','running']))): fail(409,'eval_running','Проверка этой версии уже запущена.')
     model_id=body.get('modelId')
     if model_id and not get(db,ModelEndpoint,model_id).enabled: fail(422,'disabled_model','Выбранная модель отключена.')
-    e=EvalRun(assignment_id=assignment_id,agent_config_version_id=c.id,repetitions=repetitions,model_override_id=model_id)
+    e=EvalRun(assignment_id=assignment_id,agent_config_version_id=c.id,repetitions=repetitions,model_override_id=model_id,metrics={'example_count':1})
     db.add(e); db.flush(); job=enqueue(db,'eval',e.id)
     audit(db,user,'eval.created','eval',e.id,{'configId':c.id}); db.commit(); background.add_task(dispatch,job.id); return {'jobId':job.id,'evalId':e.id,**eval_json(db,e)}
 

@@ -279,7 +279,7 @@ def test_feedback_excludes_unaccepted_or_private_facts():
     assert all(text not in composed for text in ["Unconfirmed score", "Hallucinated", "Private", "Must never"])
 
 
-def test_evaluation_computes_measured_repeated_outputs(setup_review):
+def test_evaluation_limits_legacy_repeat_request_to_first_example(setup_review):
     assignment, rubric, config, models, artifacts = setup_review
     examples = []
     for level in ["weak", "medium", "good"]:
@@ -294,11 +294,11 @@ def test_evaluation_computes_measured_repeated_outputs(setup_review):
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             return await run_evaluation(assignment, rubric, config, models, examples, repetitions=3, client=client)
     result = asyncio.run(invoke())
-    assert result["status"] == "completed" and len(result["outputs"]) == 9
-    assert result["metrics"]["ordering_accuracy"] == 1
-    assert result["metrics"]["stability"]["good"]["stddev"] == 0
+    assert result["status"] == "completed" and len(result["outputs"]) == 1
+    assert result["metrics"]["ordering_accuracy"] is None
+    assert result["metrics"]["stability"]["good"]["stddev"] is None
     assert result["metrics"]["anchor_validity"] == 1
-    assert result["metrics"]["input_tokens"] == 900
+    assert result["metrics"]["input_tokens"] == 100
     assert result["outputs"][0]["raw_outputs"][0]["output"]["suggested_score"] == 0
 
 
@@ -674,3 +674,92 @@ def test_channel_error_maps_to_actionable_code(setup_review):
     assert result["status"] == "needs_human"
     assert result["error"] == "upstream_channel_error"
     assert result["model_calls"][0]["error_code"] == "upstream_channel_error"
+
+@pytest.mark.parametrize('stop_reason,expected', [('end_turn', 'draft_ready'), ('max_tokens', 'needs_human'), ('refusal', 'needs_human')])
+def test_anthropic_messages(setup_review, monkeypatch, stop_reason, expected):
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test-anthropic-key')
+    monkeypatch.setenv('ALLOW_PUBLIC_LLM', 'true')
+    setup_review[3][0].update(provider='anthropic', base_url='https://api.anthropic.com/v1', model_name='claude-sonnet-4-6', api_key_env='ANTHROPIC_API_KEY')
+    def handler(request):
+        payload = json.loads(request.content)
+        assert str(request.url) == 'https://api.anthropic.com/v1/messages'
+        assert request.headers['x-api-key'] == 'test-anthropic-key'
+        assert request.headers['anthropic-version'] == '2023-06-01'
+        assert 'authorization' not in request.headers
+        assert payload['max_tokens'] == 1200 and 'response_format' not in payload
+        assert payload['system'] and payload['messages'][0]['role'] == 'user'
+        context = json.loads(payload['messages'][0]['content'])
+        segment = context['segments'][0]
+        raw = {'criterion_id':'c1', 'suggested_score':2, 'confidence':0.95, 'abstained':False, 'reason':'Есть реализация', 'evidence':[{'segment_id':segment['id'], 'quote':segment['text'].splitlines()[0]}], 'annotations':[]}
+        return httpx.Response(200, json={'model':'claude-sonnet-4-6', 'stop_reason':stop_reason, 'content':[{'type':'thinking','thinking':'private reasoning'}, {'type':'text','text':json.dumps(raw)}], 'usage':{'input_tokens':100,'output_tokens':50}})
+    result = run_with_transport(setup_review, handler)
+    assert result['status'] == expected
+    assert 'test-anthropic-key' not in json.dumps(result)
+    assert 'private reasoning' not in json.dumps(result)
+    assert result['model_calls'][0]['total_tokens'] == 150
+
+
+def test_anthropic_shared_agent_sampling_params():
+    from app.services.pipeline import _effective_params
+    model = {'provider':'anthropic', 'default_params':{'temperature':0.2, 'max_output_tokens':4000}}
+    task = {'params':{'temperature':0.2, 'top_p':0.91, 'max_output_tokens':4096}}
+    original = copy.deepcopy(task)
+    params, _, _ = _effective_params(model, task)
+    assert params == {'temperature':0.2, 'max_tokens':4096}
+    assert task == original
+    other, _, _ = _effective_params({**model, 'provider':'lm_studio'}, task)
+    assert other['top_p'] == 0.91
+    only_top_p, _, _ = _effective_params({'provider':'anthropic'}, {'params':{'top_p':0.9}})
+    assert only_top_p['top_p'] == 0.9 and 'temperature' not in only_top_p
+
+
+def test_eval_progress_arrives_before_next_example(setup_review):
+    assignment, rubric, config, models, artifacts = setup_review
+    examples = [{'level': level, 'artifacts': artifacts} for level in ['weak', 'medium', 'good']]
+    events = []
+    def handler(request):
+        assert events[-1]['event'] == 'stage_started'
+        assert events[-1]['repetition'] == 1
+        return response(model_response(request))
+    async def invoke():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await run_evaluation(assignment, rubric, config, models, examples, repetitions=1, client=client, progress=events.append)
+    result = asyncio.run(invoke())
+    completed = [e for e in events if e['event'] == 'example_completed']
+    assert [e['completed'] for e in completed] == [1]
+    assert all(e['total'] == 1 for e in completed)
+    assert [e['output'] for e in completed] == result['outputs']
+    assert len([e for e in events if e['event'] == 'stage_completed']) == 1
+    assert not any(e.get('level') == 'medium' for e in events)
+
+
+@pytest.mark.parametrize('levels', [['good'], ['weak','good'], ['good','good']])
+def test_eval_accepts_partial_and_repeated_categories(setup_review, levels):
+    assignment, rubric, config, models, artifacts = setup_review
+    examples = [{'level':level,'artifacts':artifacts} for level in levels]
+    async def invoke():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(lambda request: response(model_response(request)))) as client:
+            return await run_evaluation(assignment,rubric,config,models,examples,client=client)
+    result=asyncio.run(invoke())
+    assert result['status']=='completed'
+    assert len(result['outputs'])==1
+    assert result['metrics']['example_count']==1
+    assert result['metrics']['ordering_accuracy'] is None
+    assert result['metrics']['anchor_validity']==1
+    assert [o['example_index'] for o in result['outputs']]==[0]
+
+
+def test_eval_never_retries_failed_model_request(setup_review):
+    assignment,rubric,config,models,artifacts=setup_review
+    config['tasks']['criterion_evaluation']['params']['max_retries']=2
+    requests=[]
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(503,json={'error':'unavailable'})
+    async def invoke():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await run_evaluation(assignment,rubric,config,models,[{'level':'good','artifacts':artifacts}]*3,repetitions=3,client=client)
+    result=asyncio.run(invoke())
+    assert len(requests)==1
+    assert len(result['outputs'])==1
+    assert config['tasks']['criterion_evaluation']['params']['max_retries']==2

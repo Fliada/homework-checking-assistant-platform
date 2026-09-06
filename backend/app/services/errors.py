@@ -1,6 +1,8 @@
 """User-facing messages for known pipeline codes; never expose provider error bodies."""
 
 MESSAGES = {
+    'eval_requires_examples': 'Добавьте хотя бы один пример решения: слабое, среднее или хорошее.',
+    'configuration_error:unsupported_inference_parameter': 'Параметры генерации в конфигурации агента не поддерживаются выбранным провайдером. Проверьте temperature, top_p и остальные параметры этапа.',
     'invalid_github_pr_url': 'Укажите ссылку вида https://github.com/owner/repository/pull/123.',
     'github_allowlist_required': 'Администратору нужно заполнить GITHUB_ALLOWED_REPOSITORIES на сервере.',
     'github_repository_not_allowed': 'Репозиторий не входит в GITHUB_ALLOWED_REPOSITORIES. Обратитесь к администратору.',
