@@ -26,7 +26,7 @@ def artifact_json(a):
     def anchor_string(anchor):
         if isinstance(anchor, str): return anchor
         return str(anchor.get('start', anchor.get('anchor', ''))) if isinstance(anchor, dict) else ''
-    return {'id': a.get('id', a.get('artifact_id', '')), 'path': a.get('path', ''), 'mediaType': a.get('media_type', 'text/plain'), 'parseStatus': a.get('parse_status', 'needs_human'), 'segments': [{'id': s.get('id', str(i)), 'anchor': anchor_string(s.get('anchor')), 'text': s.get('text', '')} for i, s in enumerate(a.get('segments', []))]}
+    return {'id': a.get('id', a.get('artifact_id', '')), 'path': a.get('path', ''), 'mediaType': a.get('media_type', 'text/plain'), 'parseStatus': a.get('parse_status', 'needs_human'), 'reviewScope':a.get('review_scope'), 'segments': [{'id': s.get('id', str(i)), 'anchor': anchor_string(s.get('anchor')), 'text': s.get('text', ''), 'diffKind':s.get('diff_kind'), 'oldLine':s.get('old_line'), 'newLine':s.get('new_line')} for i, s in enumerate(a.get('segments', []))]}
 
 def latest_review(db, sid): return db.scalar(select(Review).where(Review.submission_id == sid).order_by(Review.created_at.desc()))
 

@@ -99,9 +99,9 @@ export function ReviewWorkspace() {
     !locked && (review.reviewerId === data.user.id || ['admin', 'owner'].includes(data.user.role));
   const file = submission.artifacts.find((f) => f.id === fileId) || submission.artifacts[0];
   const fileHighlights = visibleHighlights(review.integrity.highlights, file?.id || '', sourceFilter);
-  const lineRows = file && isCodePath(file.path) ? expandArtifactLines(file) : [];
+  const lineRows = file && file.reviewScope !== 'added_lines' && isCodePath(file.path) ? expandArtifactLines(file) : [];
   const selectedAnchor: SourceAnchor | null =
-    file && selection
+    file && selection && !file.segments.slice(selection.start, selection.end + 1).some(s => s.diffKind === 'removed')
       ? lineRows.length
         ? (() => {
             const startRow = lineRows[selection.start];
@@ -135,7 +135,7 @@ export function ReviewWorkspace() {
     );
     if (!target) return;
     setFileId(target.id);
-    const rows = isCodePath(target.path) ? expandArtifactLines(target) : [];
+    const rows = target.reviewScope !== 'added_lines' && isCodePath(target.path) ? expandArtifactLines(target) : [];
     const lineMatch = anchor.start.match(/^line:(\d+)/);
     if (rows.length && lineMatch) {
       const lineNo = Number(lineMatch[1]);
@@ -887,7 +887,7 @@ function ArtifactView({
 }) {
   const root = useRef<HTMLDivElement>(null);
   const rangeSelected = useRef(false);
-  const lineMode = isCodePath(file.path);
+  const lineMode = file.reviewScope !== 'added_lines' && isCodePath(file.path);
   const rows = lineMode ? expandArtifactLines(file) : [];
   function captureSelection() {
     const native = window.getSelection();
@@ -900,6 +900,7 @@ function ArtifactView({
     const from = rowIndex(native.anchorNode),
       to = rowIndex(native.focusNode);
     if (from === null || to === null) return;
+    if (!lineMode && file.segments.slice(Math.min(from,to), Math.max(from,to)+1).some(s => s.diffKind === 'removed')) return;
     rangeSelected.current = true;
     onRangeSelect(Math.min(from, to), Math.max(from, to));
   }
@@ -913,6 +914,7 @@ function ArtifactView({
   }
   return (
     <>
+      {file.reviewScope === 'added_lines' && <p className="muted">Дифф PR: + добавлено, − удалено. Агент комментирует только добавленные строки.</p>}
       <div className="annotation-legend" aria-label="Цвета категорий">
         {Object.entries(annotationCategories).map(([key, label]) => (
           <span key={key} className={`category-label category-${key}`}>
@@ -1023,9 +1025,10 @@ function ArtifactView({
                   id={`segment-${file.id}-${i}`}
                   data-line-index={i}
                   key={segment.id || i}
-                  className={`source-line ${category ? `annotated category-${category}` : ''} ${aiHighlight ? `ai-highlight ai-${aiHighlight.level}` : ''} ${selected ? 'selected' : ''}`}
+                  className={`source-line diff-${segment.diffKind || 'none'} ${category ? `annotated category-${category}` : ''} ${aiHighlight ? `ai-highlight ai-${aiHighlight.level}` : ''} ${selected ? 'selected' : ''}`}
                   title={aiHighlight?.message}
                   onClick={(e) => {
+                    if (segment.diffKind === 'removed') return;
                     if (rangeSelected.current) {
                       rangeSelected.current = false;
                       return;
@@ -1033,15 +1036,16 @@ function ArtifactView({
                     onSelect(i, e.shiftKey);
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
+                    if (segment.diffKind !== 'removed' && (e.key === 'Enter' || e.key === ' ')) {
                       e.preventDefault();
                       onSelect(i, e.shiftKey);
                     }
                   }}
                   aria-pressed={selected}
                 >
+                  {segment.diffKind && <span className="diff-marker" aria-label={segment.diffKind}>{segment.diffKind === 'added' ? '+' : segment.diffKind === 'removed' ? '−' : ' '}</span>}
                   <span className="line-no" title={segment.anchor}>
-                    {segment.anchor
+                    {segment.diffKind ? `${segment.oldLine ?? ''} │ ${segment.newLine ?? ''}` : segment.anchor
                       .replace('line:', '')
                       .replace('paragraph:', '¶ ')
                       .replace('page:', 'с. ')}

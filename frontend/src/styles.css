@@ -2486,3 +2486,10 @@ dialog::backdrop {
 .source-pane > .card.flush > .card-head {
   border-radius: 20px 20px 0 0;
 }
+
+.source-line.diff-added { background: #dafbe1; border-left: 3px solid #1a7f37; }
+.source-line.diff-removed { background: #ffebe9; border-left: 3px solid #cf222e; cursor: default; }
+.source-line.diff-context { border-left: 3px solid transparent; }
+.diff-marker { display: inline-block; width: 18px; flex-shrink: 0; text-align: center; user-select: none; font-weight: 700; }
+.source-line.diff-added.selected { background: #acf2bd; }
+.source-line.diff-added, .source-line.diff-removed, .source-line.diff-context { grid-template-columns: 18px 85px minmax(0, 1fr); }

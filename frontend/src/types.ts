@@ -54,11 +54,15 @@ export interface Assignment {
   activeConfigVersion: number | null;
 }
 export interface Segment {
+  diffKind?: 'added' | 'removed' | 'context';
+  oldLine?: number | null;
+  newLine?: number | null;
   id: string;
   anchor: string;
   text: string;
 }
 export interface Artifact {
+  reviewScope?: string;
   id: string;
   path: string;
   mediaType: string;

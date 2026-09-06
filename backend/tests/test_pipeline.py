@@ -81,7 +81,9 @@ def test_ingest_uses_immutable_head_and_does_not_follow_download_urls(monkeypatc
             return httpx.Response(200, json={"sha": head, "truncated": False, "tree": [{"type": "blob", "mode": "100644", "path": "main.go", "sha": blob, "size": 13, "download_url": "http://169.254.169.254/secrets"}]})
         if "/git/blobs/" in path:
             return httpx.Response(200, json={"encoding": "base64", "content": base64.b64encode(b"package main\n").decode()})
-        if path.endswith("/commits") or path.endswith("/files"):
+        if path.endswith("/files"):
+            return httpx.Response(200, json=[{"filename":"main.go", "status":"added", "sha":blob, "additions":1, "deletions":0, "patch":"@@ -0,0 +1 @@\n+package main"}])
+        if path.endswith("/commits"):
             return httpx.Response(200, json=[])
         raise AssertionError(path)
 
@@ -556,7 +558,7 @@ def test_large_pr_fallback_is_pinned_bounded_and_skips_links(monkeypatch, fallba
             metadata_calls += 1
             return httpx.Response(200, json={**pr, 'head': {'sha': 'e'*40}} if fallback == 'changed_head' and metadata_calls > 1 else pr)
         if path.endswith('/files'):
-            return httpx.Response(200, json=[{'filename': 'src/main.go', 'status': 'modified', 'sha': blob, 'download_url': 'https://evil.test/file'}, {'filename': 'old.go', 'status': 'removed', 'sha': 'f'*40}])
+            return httpx.Response(200, json=[{'filename': 'src/main.go', 'status': 'modified', 'sha': blob, 'additions':1, 'deletions':0, 'patch':'@@ -0,0 +1 @@\n+package main', 'download_url': 'https://evil.test/file'}, {'filename': 'old.go', 'status': 'removed', 'sha': 'f'*40}])
         if path.endswith('/commits'):
             return httpx.Response(200, json=[])
         if request.url.params.get('recursive'):
@@ -584,7 +586,7 @@ def test_large_pr_fallback_is_pinned_bounded_and_skips_links(monkeypatch, fallba
     result = asyncio.run(invoke())
     assert result['snapshot_scope'] == 'pull_request' and result['snapshot_complete'] is False
     assert result['head_sha'] == head
-    assert [a['path'] for a in result['artifacts']] == ['src/main.go']
+    assert [a['path'] for a in result['artifacts']] == ['src/main.go', 'old.go']
     assert result['artifacts'][0]['snapshot_complete'] is False
     assert result['artifacts'][0]['parse_status'] == ('needs_human' if fallback == 'symlink' else 'parsed')
     assert any(item['reason']=='removed_from_head' for item in result['context_limitations']['omitted_files'])

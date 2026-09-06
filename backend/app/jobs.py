@@ -104,7 +104,7 @@ async def process_submission(db, job):
     assignment = db.get(Assignment, submission.assignment_id)
     rubric = db.get(Rubric, review.rubric_id)
     config = db.get(AgentConfig, review.agent_config_version_id) if review.agent_config_version_id else None
-    if job.kind == 'ingest':
+    if job.kind == 'ingest' or (not submission.git_metadata.get('demo') and submission.external_ref.startswith('https://github.com/') and any(a.get('review_scope') != 'added_lines' for a in submission.artifacts)):
         submission.status, review.status = 'ingesting', 'ingesting'
         db.commit()
         limits = db.get(PlatformSetting, 'global').values

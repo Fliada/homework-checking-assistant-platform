@@ -268,7 +268,7 @@ async def ingest_github_pr(pr_url: str, *, token: str | None = None, allowed_rep
                     raise PipelineError("github_invalid_changed_file_path")
                 if item.get("status") not in {"added", "removed", "modified", "renamed", "copied", "changed", "unchanged"} or not re.fullmatch(r"[0-9a-f]{40,64}", item.get("sha", "")):
                     raise PipelineError("github_invalid_changed_files")
-                changed_files.append({"path": item["filename"], "status": item["status"], "sha": item["sha"], "previous_path": item.get("previous_filename"), "additions": item.get("additions"), "deletions": item.get("deletions")})
+                changed_files.append({"path": item["filename"], "status": item["status"], "sha": item["sha"], "previous_path": item.get("previous_filename"), "additions": item.get("additions"), "deletions": item.get("deletions"), "patch": item.get("patch")})
             if len(changed_files) > max_files:
                 raise PipelineError("github_changed_files_limit")
             if len(items) < 100:
@@ -276,19 +276,21 @@ async def ingest_github_pr(pr_url: str, *, token: str | None = None, allowed_rep
         if len({item["path"] for item in changed_files}) != len(changed_files) or (isinstance(pr.get("changed_files"), int) and pr["changed_files"] != len(changed_files)):
             raise PipelineError("github_pr_changed_during_ingest")
         await _check_pr_unchanged(client, base, number, pr, headers)
-        limit_reason = None
-        try:
-            snapshot = await _snapshot(client, repository, head_sha, headers, max_files=max_files, max_bytes=max_bytes, public=public, artifact_root=artifact_root, expected_files=changed_files)
-        except PipelineError as exc:
-            if str(exc) not in {"upstream_response_too_large", "github_tree_truncated", "github_snapshot_limit"}:
-                raise
-            limit_reason = str(exc)
-            snapshot = await _pull_request_snapshot(client, repository, head_sha, changed_files, headers, max_files=max_files, max_bytes=max_bytes, public=public, artifact_root=artifact_root)
-        scope = "pull_request" if limit_reason else "repository"
-        limitations = {"scope": scope, "complete": limit_reason is None, "omitted_context": "Загружены только изменённые файлы PR. Остальные файлы, зависимости и структура репозитория не проверены; их отсутствие в снимке не означает отсутствие в работе." if limit_reason else "", "omitted_files": snapshot.pop("omitted_files", [])}
-        snapshot.update(snapshot_scope=scope, snapshot_complete=limit_reason is None, snapshot_limit_reason=limit_reason, context_limitations=limitations)
+        snapshot = await _pull_request_snapshot(client, repository, head_sha, changed_files, headers, max_files=max_files, max_bytes=max_bytes, public=public, artifact_root=artifact_root)
+        from .pr_diff import attach_pr_diff
+        by_path = {a['path']: a for a in snapshot['artifacts']}
+        for changed in changed_files:
+            artifact = by_path.get(changed['path'])
+            if artifact is None and changed['status'] == 'removed' and not should_skip(changed['path']):
+                artifact = {'id': hashlib.sha256((head_sha + changed['path']).encode()).hexdigest()[:24], 'path': changed['path'], 'content': '', 'public': public}
+                snapshot['artifacts'].append(artifact)
+            if artifact is not None:
+                attach_pr_diff(artifact, changed)
+        scope = 'pull_request'
+        limitations = {'scope': scope, 'complete': False, 'omitted_context': 'Агент проверяет только добавленные строки PR. Неизменённые и удалённые строки доступны только ревьюеру.', 'omitted_files': snapshot.pop('omitted_files', [])}
+        snapshot.update(snapshot_scope=scope, snapshot_complete=False, snapshot_limit_reason='added_lines_only', context_limitations=limitations)
         for artifact in snapshot["artifacts"]:
-            artifact.update(snapshot_scope=scope, snapshot_complete=limit_reason is None, context_limitations=limitations)
+            artifact.update(snapshot_scope=scope, snapshot_complete=False, context_limitations=limitations)
         commits: list[dict[str, Any]] = []
         for page in range(1, 4):
             items = await _json_request(client, "GET", f"{base}/pulls/{number}/commits?per_page=100&page={page}", headers=headers)
@@ -714,6 +716,8 @@ def _segments(artifacts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if artifact.get("parse_status") != "parsed":
             continue
         for segment in artifact.get("segments", []):
+            if artifact.get("review_scope") == "added_lines" and segment.get("diff_kind") != "added":
+                continue
             artifact_id = segment.get("artifact_id") or artifact.get("id", artifact.get("artifact_id", ""))
             path = segment.get("path") or artifact.get("path", "")
             anchor = segment.get("anchor", {})
@@ -784,7 +788,7 @@ async def run_review_pipeline(assignment: dict[str, Any], rubric: dict[str, Any]
     criteria = rubric.get("criteria", [])
     all_segments = _segments(artifacts)
     context_incomplete = any(item.get("snapshot_complete") is False for item in artifacts)
-    coverage = {"complete": not context_incomplete, "scope": "pull_request" if context_incomplete else "repository", "instruction": "Only changed PR files are available. Never infer missing files or architecture from this selection. Set context_sufficient=true only if the current criterion can be fully verified from cited fragments. Otherwise abstain. Zero scores require human review for incomplete snapshots." if context_incomplete else "Evaluate only supplied evidence."}
+    coverage = {"complete": not context_incomplete, "scope": "pull_request" if context_incomplete else "repository", "instruction": "Only added/modified PR lines are available. Never comment on unchanged or deleted lines. Never infer missing files or architecture from this selection. Set context_sufficient=true only if the current criterion can be fully verified from cited fragments. Otherwise abstain. Zero scores require human review for incomplete snapshots." if context_incomplete else "Evaluate only supplied evidence."}
     results: list[dict[str, Any]] = []
     annotations: list[dict[str, Any]] = []
     calls: list[dict[str, Any]] = []
