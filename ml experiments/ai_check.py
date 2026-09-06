@@ -17,7 +17,7 @@ CODect_PYTHON = ROOT / "Codect" / "packages" / "core" / "python"
 DETECTOR = ROOT / "ru-ai-text-detector"
 VENV_PY = DETECTOR / "venv" / "bin" / "python"
 
-CODE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx"}
+CODE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".java", ".rs", ".c", ".cpp", ".h", ".md", ".txt", ".markdown"}
 TEXT_EXT = {".md", ".txt", ".markdown"}
 
 # --- Codect (код) --------------------------------------------------------------
@@ -409,6 +409,261 @@ def run_text(path: Path, html_path: Path | None, model: str) -> Path | None:
     return out
 
 
+def analyze_file_json(path: Path, *, forced_type: str | None = None, model: str = "v4") -> dict:
+    kind = detect_kind(path, forced_type or "auto")
+    ext = path.suffix.lower()
+    if kind == "code" and ext == ".py":
+        if not CODect_PYTHON.is_dir():
+            return {"kind": "code", "error": "codect_missing", "whole": None, "signals": [], "highlights": []}
+        lines, blocks, hits, whole = analyze_code(path)
+        return _code_json(path, blocks, hits, whole)
+    if ext not in TEXT_EXT and ext in {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".java", ".rs", ".c", ".cpp", ".h"}:
+        payload = _heuristic_source_json(path)
+        if VENV_PY.is_file():
+            try:
+                report, _, _, _ = analyze_text(path, model)
+                text_payload = _text_json(path, report)
+                payload = _merge_payloads(payload, text_payload)
+            except Exception as exc:
+                if payload["signals"] or payload["highlights"]:
+                    payload["warning"] = str(exc).splitlines()[-1][:200]
+                else:
+                    payload["warning"] = str(exc).splitlines()[-1][:200]
+        return payload
+    if VENV_PY.is_file():
+        try:
+            report, _, _, _ = analyze_text(path, model)
+            return _text_json(path, report)
+        except Exception as exc:
+            return {"kind": "text", "error": str(exc), "whole": None, "signals": [], "highlights": []}
+    if ext not in TEXT_EXT:
+        return _heuristic_source_json(path)
+    return {"kind": "text", "error": "text_detector_missing", "whole": None, "signals": [], "highlights": []}
+
+
+def _merge_payloads(primary: dict, secondary: dict) -> dict:
+    seen = {(item["start_line"], item["end_line"]) for item in primary.get("highlights", [])}
+    highlights = list(primary.get("highlights", []))
+    for item in secondary.get("highlights", []):
+        key = (item["start_line"], item["end_line"])
+        if key not in seen:
+            highlights.append(item)
+            seen.add(key)
+    signals = list(primary.get("signals", []))
+    signals.extend(secondary.get("signals", []))
+    scores = [
+        float(item.get("ai_score") or 0)
+        for item in highlights + signals
+        if item.get("ai_score") is not None
+    ]
+    return {
+        "kind": primary.get("kind") or secondary.get("kind"),
+        "whole": primary.get("whole") or secondary.get("whole"),
+        "ai_score": max(scores) if scores else primary.get("ai_score") or secondary.get("ai_score"),
+        "signals": signals,
+        "highlights": highlights,
+        "warning": primary.get("warning") or secondary.get("warning"),
+    }
+
+
+HEURISTIC_LINE_PATTERNS: list[tuple[str, str, float]] = [
+    (r"//.*\b(This function|entry point|responsible for|Initialize and run|HTTP server)\b", "шаблонный AI-комментарий", 0.62),
+    (r"//.{55,}", "длинный формальный комментарий", 0.55),
+    (r"#.*\b(TODO|FIXME|INSERT|REPLACE|your_|example)\b", "placeholder", 0.58),
+    (r"\b(foo|bar|baz|example|sample|demo|tutorial)\b", "generic-имя", 0.5),
+]
+
+
+def _heuristic_source_json(path: Path) -> dict:
+    content = path.read_text(encoding="utf-8", errors="replace")
+    lines = content.splitlines()
+    highlights: list[dict] = []
+    flagged: list[int] = []
+    for lineno, line in enumerate(lines, 1):
+        reasons: list[str] = []
+        score = 0.0
+        for pattern, label, weight in HEURISTIC_LINE_PATTERNS:
+            if re.search(pattern, line, re.IGNORECASE):
+                reasons.append(label)
+                score = max(score, weight)
+        if score >= 0.45:
+            flagged.append(lineno)
+            highlights.append(
+                {
+                    "kind": "code",
+                    "path": path.name,
+                    "start_line": lineno,
+                    "end_line": lineno,
+                    "ai_score": score,
+                    "level": _signal_level(MIXED_LABEL, score),
+                    "reasons": reasons,
+                    "message": "; ".join(reasons) or "Подозрительная строка",
+                }
+            )
+    signals: list[dict] = []
+    if flagged:
+        start, end = flagged[0], flagged[-1]
+        top = max(item["ai_score"] for item in highlights)
+        signals.append(
+            {
+                "kind": "code",
+                "path": path.name,
+                "block_kind": "Heuristic",
+                "block_name": path.name,
+                "start_line": start,
+                "end_line": end,
+                "classification": MIXED_LABEL,
+                "ai_score": top,
+                "level": _signal_level(MIXED_LABEL, top),
+                "message": f"Эвристика: {len(flagged)} подозрительных строк в «{path.name}».",
+            }
+        )
+    return {
+        "kind": "code",
+        "whole": MIXED_LABEL if flagged else HUMAN_LABEL,
+        "signals": signals,
+        "highlights": highlights,
+    }
+
+
+def _signal_level(classification: str, ai_score: float) -> str:
+    if classification in {AI_LABEL, "подозрительно"} or ai_score >= 0.65:
+        return "high"
+    if classification in {MIXED_LABEL, "неопределённо"} or ai_score >= 0.45:
+        return "medium"
+    return "low"
+
+
+def _code_json(path: Path, blocks: list[BlockResult], hits: dict[int, LineHit], whole: str) -> dict:
+    signals: list[dict] = []
+    highlights: list[dict] = []
+    for block in blocks:
+        if block.classification == HUMAN_LABEL:
+            continue
+        level = _signal_level(block.classification, block.ai_score)
+        signals.append(
+            {
+                "kind": "code",
+                "path": path.name,
+                "block_kind": block.kind,
+                "block_name": block.name,
+                "start_line": block.start,
+                "end_line": block.end,
+                "classification": block.classification,
+                "ai_score": block.ai_score,
+                "human_score": block.human_score,
+                "level": level,
+                "message": f"Фрагмент «{block.name}» (стр. {block.start}-{block.end}) похож на код, сгенерированный ИИ.",
+            }
+        )
+    flagged_lines: set[int] = set()
+    for block in blocks:
+        if block.classification != HUMAN_LABEL:
+            flagged_lines.update(range(block.start, block.end + 1))
+    for lineno, hit in hits.items():
+        suspicious = lineno in flagged_lines or "ai" in hit.tags or hit.block_class in {AI_LABEL, MIXED_LABEL}
+        if not suspicious:
+            continue
+        ai_score = next((b.ai_score for b in blocks if b.start <= lineno <= b.end), 0.0)
+        highlights.append(
+            {
+                "kind": "code",
+                "path": path.name,
+                "start_line": lineno,
+                "end_line": lineno,
+                "ai_score": ai_score,
+                "level": _signal_level(hit.block_class or AI_LABEL, ai_score),
+                "reasons": hit.reasons,
+                "message": "; ".join(hit.reasons) or hit.block_class or "Подозрительная строка",
+            }
+        )
+    if whole != HUMAN_LABEL and not signals:
+        max_ai = max((b.ai_score for b in blocks), default=0.0)
+        signals.append(
+            {
+                "kind": "code",
+                "path": path.name,
+                "block_kind": "File",
+                "block_name": path.name,
+                "start_line": 1,
+                "end_line": max(1, len(hits)),
+                "classification": whole,
+                "ai_score": max_ai,
+                "human_score": min((b.human_score for b in blocks), default=0.0),
+                "level": _signal_level(whole, max_ai),
+                "message": f"Файл «{path.name}» содержит признаки кода, сгенерированного ИИ.",
+            }
+        )
+    return {"kind": "code", "whole": whole, "signals": signals, "highlights": highlights}
+
+
+def _paragraph_line_range(content: str, para_text: str, para_idx: int) -> tuple[int, int]:
+    needle = (para_text or "").strip().split("\n")[0][:80]
+    if needle:
+        pos = content.find(needle)
+        if pos >= 0:
+            start = content[:pos].count("\n") + 1
+            end = start + max(0, (para_text or "").count("\n"))
+            return start, end
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n", content) if part.strip()]
+    if 1 <= para_idx <= len(paragraphs):
+        block = paragraphs[para_idx - 1]
+        pos = content.find(block[: min(len(block), 80)])
+        if pos >= 0:
+            start = content[:pos].count("\n") + 1
+            end = start + block.count("\n")
+            return start, end
+    return para_idx, para_idx
+
+
+def _text_json(path: Path, report) -> dict:
+    content = path.read_text(encoding="utf-8", errors="replace")
+    code_file = path.suffix.lower() in {".go", ".js", ".jsx", ".ts", ".tsx", ".java", ".rs", ".c", ".cpp", ".h", ".py"}
+    signals: list[dict] = []
+    highlights: list[dict] = []
+    for para in report.paragraphs:
+        if para.label not in {"подозрительно", "неопределённо"}:
+            continue
+        ai_score = float(para.p_ai or 0)
+        level = _signal_level(para.label, ai_score)
+        start_line, end_line = _paragraph_line_range(content, para.text, para.idx)
+        kind = "code" if code_file else "text"
+        signals.append(
+            {
+                "kind": kind,
+                "path": path.name,
+                "block_kind": "Paragraph",
+                "block_name": f"абзац {para.idx}",
+                "start_line": start_line,
+                "end_line": end_line,
+                "classification": para.label,
+                "ai_score": ai_score,
+                "level": level,
+                "message": f"Строки {start_line}-{end_line}: p(ИИ)={ai_score:.2f} · {para.text[:120]}",
+            }
+        )
+        for lineno in range(start_line, end_line + 1):
+            highlights.append(
+                {
+                    "kind": kind,
+                    "path": path.name,
+                    "start_line": lineno,
+                    "end_line": lineno,
+                    "ai_score": ai_score,
+                    "level": level,
+                    "message": para.text[:160],
+                }
+            )
+    overall = max((float(p.p_ai or 0) for p in report.paragraphs), default=0.0)
+    return {
+        "kind": "code" if code_file else "text",
+        "whole": "подозрительно" if overall >= 0.72 else ("неопределённо" if overall >= 0.45 else "человек"),
+        "ai_score": overall if highlights else None,
+        "signals": signals,
+        "highlights": highlights,
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description="Проверка кода (Codect) и текста (ru-ai-text-detector) с подсветкой фрагментов"
@@ -422,11 +677,18 @@ def main() -> None:
     )
     ap.add_argument("--model", choices=["v1", "v2", "v3", "v4"], default="v4", help="модель для текста")
     ap.add_argument("--html", type=Path, help="путь для HTML-отчёта")
+    ap.add_argument("--json", action="store_true", help="вывести JSON для интеграции в платформу")
     args = ap.parse_args()
 
     path = args.file.resolve()
     if not path.is_file():
         sys.exit(f"Файл не найден: {path}")
+
+    if args.json:
+        import json as _json
+
+        print(_json.dumps(analyze_file_json(path, forced_type=args.type, model=args.model), ensure_ascii=False))
+        return
 
     kind = detect_kind(path, args.type)
     if kind == "code":

@@ -1,0 +1,73 @@
+{
+  "id": "go-task-1",
+  "title": "1. Создание boilerplate сервиса, поднятие веб сервера.",
+  "task_text": "### 1. Создание boilerplate сервиса, поднятие веб сервера.\n\nПрежде чем мы начнём реализовывать бизнес-логику сервиса, важно заложить надёжный фундамент. На этом этапе вы подготовите базовую структуру Go-проекта, которая будет использоваться и развиваться на следующих шагах.\n\n#### Цель\n\nПодготовить каркас Go-приложения: инициализировать репозиторий, настроить веб-сервер, окружение, роутер и добавить первые тестовые ручки. Всё это — стандартная часть при запуске любого микросервиса в продакшене.\n\n#### Что нужно сделать\n\n1. **Структура проекта**\n    - Используйте рекомендации из [`golang-standards/project-layout`](https://github.com/golang-standards/project-layout).\n    - Разделите код на логические директории (`cmd/`, `internal/`, `pkg/`, и т.д.), чтобы проект оставался читаемым и масштабируемым.\n\n2. **Запуск веб-сервера**\n    - Поднимите HTTP-сервер с помощью стандартного пакета http\n    - Параметры сервера должны читаться из `.env`-файла. Для порта в .env файле должна быть задана переменная PORT. \n    - Дайте возможность **переопределять значения переменных окружения через флаги командной строки**. Для указания порта программа должна обрабатывать флаг в формате `go run cmd/main.go --port 3000`.\n\n3. **Роутинг**\n   Добавьте два тестовых endpoint’а:\n    - `GET /ping` — возвращает `200 OK` и JSON: `{ \"message\": \"pong\" }`\n    - `HEAD /healthcheck` — возвращает `204 No Content`, без тела\n\n4. **Корректное завершение**\n    - При остановке сервиса (сигналы `SIGINT` или `SIGTERM`) — **корректно завершайте работу сервера** с использованием пакета `context` и `signal`.\n    - В момент завершения выведите сообщение в лог. Лог должен записываться в stdout. В момент завершения в лог должно быть записано сообщение `Shutting down service-courier`\n\n#### Дополнительно\n\n- Приветствуется использование сторонних библиотек:\n    - `github.com/joho/godotenv` — для загрузки `.env`-файлов\n    - `github.com/spf13/pflag` или `urfave/cli` — для обработки флагов\n    - `github.com/go-chi/chi`, `gin-gonic/gin`, `labstack/echo` — для роутинга\n- Обратите внимание на **читабельность и чистоту кода** — это поможет вам в следующих заданиях, когда сервис начнёт расти.\n",
+  "source_url": "https://github.com/ai-talent-hub-avito/homework_examples/blob/main/GO/task1.md",
+  "source_sha": "f4661c9cecd1de64958899bde2ac0b7fd0d143f3",
+  "rubric_note": "Начальная вручную составленная рубрика по условию. Эксперт может выпустить новую версию.",
+  "criteria": [
+    {
+      "id": "go1-c1",
+      "title": "Структура проекта",
+      "description": "Логическое разделение cmd/internal/pkg или осознанная альтернатива.",
+      "max_score": 2,
+      "verification_mode": "llm",
+      "required": true
+    },
+    {
+      "id": "go1-c2",
+      "title": "Конфигурация сервера",
+      "description": "net/http, PORT из .env и приоритет --port над окружением.",
+      "max_score": 2,
+      "verification_mode": "llm",
+      "required": true
+    },
+    {
+      "id": "go1-c3",
+      "title": "Маршрут /ping",
+      "description": "GET /ping возвращает 200 и JSON {\"message\":\"pong\"}.",
+      "max_score": 2,
+      "verification_mode": "llm",
+      "required": true
+    },
+    {
+      "id": "go1-c4",
+      "title": "Маршрут /healthcheck",
+      "description": "HEAD /healthcheck возвращает 204 без тела.",
+      "max_score": 1,
+      "verification_mode": "llm",
+      "required": true
+    },
+    {
+      "id": "go1-c5",
+      "title": "Корректное завершение",
+      "description": "SIGINT/SIGTERM, context, graceful shutdown и stdout-лог Shutting down service-courier.",
+      "max_score": 3,
+      "verification_mode": "llm",
+      "required": true
+    }
+  ],
+  "references": [
+    {
+      "kind": "calibration",
+      "level": "weak",
+      "repository": "ai-talent-hub-avito/homework_examples",
+      "ref": "7a72e08ab417f3ff6503467b51f5a58157fa833a",
+      "path": "GO/Слабое решение 1-3"
+    },
+    {
+      "kind": "calibration",
+      "level": "medium",
+      "repository": "ai-talent-hub-avito/homework_examples",
+      "ref": "7a72e08ab417f3ff6503467b51f5a58157fa833a",
+      "path": "GO/Среднее решение 1-3"
+    },
+    {
+      "kind": "calibration",
+      "level": "good",
+      "repository": "ai-talent-hub-avito/homework_examples",
+      "ref": "7a72e08ab417f3ff6503467b51f5a58157fa833a",
+      "path": "GO/Хорошее решение 1-3"
+    }
+  ]
+}
