@@ -1,0 +1,73 @@
+{
+  "id": "go-task-2",
+  "title": "2. Подключение базы данных и crud API",
+  "task_text": "### 2. Подключение базы данных и crud API\n\nТеперь, когда сервис запускается, обрабатывает запросы и умеет завершаться корректно, пришло время сделать следующий шаг — **подключить базу данных** и реализовать базовую логику управления курьерами.\n\n#### Цель\n\nПодключить PostgreSQL к сервису `service-courier`, описать схему таблиц и реализовать полноценный CRUD-интерфейс для работы с сущностью **курьер**.\n\n#### Что нужно сделать\n\n#### 1. Подключение к базе данных\n- Используйте PostgreSQL.\n- Подключение должно настраиваться через `.env` файл (host, port, dbname, user, password).\n- Можно использовать библиотеку [`jackc/pgx`](https://github.com/jackc/pgx) или `pgxpool` для пула соединений.\n\n#### 2. Структура таблиц\n\nСоздайте миграции для инициализации базы данных. Курьеры — это основная сущность, и таблица должна как минимум включать:\n\n```sql\nCREATE TABLE couriers (\n    id          BIGSERIAL PRIMARY KEY,\n    name        TEXT NOT NULL,\n    phone       TEXT NOT NULL UNIQUE,\n    status      TEXT NOT NULL, -- например: 'available', 'busy', 'paused'\n    created_at  TIMESTAMP DEFAULT now(),\n    updated_at  TIMESTAMP DEFAULT now()\n);\n```\n⚠️ Для миграции используйте https://github.com/pressly/goose.\n\n#### 3. CRUD API \n3.1 `GET /courier/{id}` Получить данные о конкретном курьере.\n\n**Ответы:**\n- `200 OK` — курьер найден\n- `404 Not Found` — если курьер не найден\n- `400 Bad Request` — если id невалидный (не число и т.п.)\n```json\n{\n  \"id\": 1,\n  \"name\": \"Антон\",\n  \"phone\": \"+37444111222\",\n  \"status\": \"available\"\n}\n```\n\n3.2 `GET /couriers` Список всех курьеров.\n\n**Ответ:**\n- `200 OK`\n```json\n[\n  {\n    \"id\": 1,\n    \"name\": \"Антон\",\n    \"phone\": \"+37444111222\",\n    \"status\": \"available\"\n  },\n]\n```\n\n3.3 `POST /courier` Создание нового курьера.\n**Ответы:**\n- `201 Created` — курьер успешно создан\n- `400 Bad Request` — отсутствуют обязательные поля или телефон невалидный\n- `409 Conflict` — курьер с таким телефоном уже существует\n\n**Тело запроса:**\n```json\n{\n  \"name\": \"Антон\",\n  \"phone\": \"+37444111222\",\n  \"status\": \"available\"\n}\n```\n\n3.4 `PUT /courier` Обновление данных о курьере.\n**Ответы:**\n- `200 OK` — успешно обновлено\n- `404 Not Found` — курьер не найден\n- `400 Bad Request` — ошибки валидации\n**Тело запроса:**\n```json\n{\n  \"id\": 1,\n  \"name\": \"Антон Иванов\",\n  \"phone\": \"+37444111222\",\n  \"status\": \"paused\"\n}\n```\n\n#### Дополнительно\n- Используйте SQL-плейсхолдеры `$1`, `$2`, чтобы избежать SQL-инъекций.",
+  "source_url": "https://github.com/ai-talent-hub-avito/homework_examples/blob/main/GO/task2.md",
+  "source_sha": "6d6fae130c99a29b9b9b5218d819340455f03519",
+  "rubric_note": "Начальная вручную составленная рубрика по условию. Эксперт может выпустить новую версию.",
+  "criteria": [
+    {
+      "id": "go2-c1",
+      "title": "PostgreSQL и конфигурация",
+      "description": "Подключение PostgreSQL из .env: host, port, dbname, user, password.",
+      "max_score": 2,
+      "verification_mode": "llm",
+      "required": true
+    },
+    {
+      "id": "go2-c2",
+      "title": "Миграции",
+      "description": "goose-миграции couriers с id/name/phone UNIQUE/status/created_at/updated_at.",
+      "max_score": 2,
+      "verification_mode": "llm",
+      "required": true
+    },
+    {
+      "id": "go2-c3",
+      "title": "Чтение курьеров",
+      "description": "GET /courier/{id} и GET /couriers, 200/404/400 согласно условию.",
+      "max_score": 2,
+      "verification_mode": "llm",
+      "required": true
+    },
+    {
+      "id": "go2-c4",
+      "title": "Создание и изменение",
+      "description": "POST /courier и PUT /courier; валидация, 201/200, 400/404/409.",
+      "max_score": 3,
+      "verification_mode": "llm",
+      "required": true
+    },
+    {
+      "id": "go2-c5",
+      "title": "Параметризованный SQL",
+      "description": "Плейсхолдеры параметров вместо интерполяции пользовательского ввода в SQL.",
+      "max_score": 1,
+      "verification_mode": "llm",
+      "required": true
+    }
+  ],
+  "references": [
+    {
+      "kind": "calibration",
+      "level": "weak",
+      "repository": "ai-talent-hub-avito/homework_examples",
+      "ref": "7a72e08ab417f3ff6503467b51f5a58157fa833a",
+      "path": "GO/Слабое решение 1-3"
+    },
+    {
+      "kind": "calibration",
+      "level": "medium",
+      "repository": "ai-talent-hub-avito/homework_examples",
+      "ref": "7a72e08ab417f3ff6503467b51f5a58157fa833a",
+      "path": "GO/Среднее решение 1-3"
+    },
+    {
+      "kind": "calibration",
+      "level": "good",
+      "repository": "ai-talent-hub-avito/homework_examples",
+      "ref": "7a72e08ab417f3ff6503467b51f5a58157fa833a",
+      "path": "GO/Хорошее решение 1-3"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f3efff" />
+    <meta name="description" content="Рабочее пространство проверки домашних заданий Avito Education" />
+    <title>Avito Education · Проверка работ</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      if (window.location.protocol === 'file:') {
+        document.getElementById('root').innerHTML = '<main style="font:16px/1.7 system-ui;max-width:650px;margin:12vh auto;padding:30px;color:#1b1d33"><h1>Откройте приложение через сервер</h1><p>Из папки репозитория выполните <code>npm run setup</code>, затем <code>npm run dev</code>.</p><p><a href="http://127.0.0.1:5173">Перейти в приложение →</a></p></main>';
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
