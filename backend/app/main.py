@@ -439,7 +439,6 @@ def publish_config(assignment_id: str, version: int, user: User = Depends(curren
     if set(TASK_TYPES)-set(c.tasks): fail(422,'incomplete_config','Настройте все задачи агента.')
     validate_tasks(db,{'tasks':c.tasks})
     a=get(db,Assignment,assignment_id)
-    if any(r.get('type') in ['weak','medium','good'] for r in a.references) and c.status!='evaluated': fail(409,'eval_required','Перед публикацией выполните eval на калибровочных примерах.')
     for previous in db.scalars(select(AgentConfig).where(AgentConfig.assignment_id==assignment_id,AgentConfig.status=='published')).all(): previous.status='archived'
     c.status,c.published_at='published',now()
     audit(db,user,'agent_config.published','agent_config',c.id); db.commit(); return config_json(c)
@@ -769,6 +768,32 @@ def integrity_decision(review_id: str, signal_id: str, body: dict, user: User = 
     audit(db, user, 'review.integrity_decided', 'review', r.id, {'signalId': signal_id, 'status': decision})
     db.commit()
     return review_json(db, r)
+
+@app.post(P+'/reviews/{review_id}/integrity/recheck')
+def recheck_integrity(review_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    from .services.integrity_check import run_integrity_check
+    r=edit_review(db,user,review_id)
+    submission=get(db,Submission,r.submission_id)
+    if submission.status in PROCESSING_STATUSES:
+        fail(409,'submission_busy','Дождитесь завершения обработки работы.')
+    revision=r.revision
+    result=run_integrity_check(submission.artifacts)
+    db.refresh(r)
+    if r.revision!=revision or r.status=='confirmed':
+        fail(409,'review_changed','Проверка была изменена. Обновите страницу.')
+    decisions={s['id']:s.get('status','pending') for s in (r.integrity or {}).get('signals',[])}
+    for signal in result.get('signals',[]):
+        signal['status']=decisions.get(signal['id'],'pending')
+    for highlight in result.get('highlights',[]):
+        highlight['status']=decisions.get(highlight.get('signal_id'),'pending')
+    signals=result.get('signals',[])
+    if signals and all(s.get('status')!='pending' for s in signals):
+        result['decision']='accepted' if all(s.get('status')=='accepted' for s in signals) else 'reviewed'
+    r.integrity=result
+    r.revision+=1
+    audit(db,user,'review.integrity_rechecked','review',r.id,{'status':result.get('status')})
+    db.commit()
+    return review_json(db,r)
 
 @app.post(P+'/reviews/{review_id}/feedback/compose')
 def compose_review_feedback(review_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):

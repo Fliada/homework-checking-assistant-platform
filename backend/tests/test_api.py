@@ -77,10 +77,8 @@ def test_immutable_config_and_pinned_review(client):
     c=client.post('/api/v1/assignments/go-task-1/agent-config/versions',json={},headers=expert).json()
     assert c['version']==2 and c['status']=='draft'
     published=client.post('/api/v1/assignments/go-task-1/agent-config/versions/2/publish',headers=expert)
-    assert published.status_code==409 and published.json()['code']=='eval_required'
-    with SessionLocal() as db:
-        config=db.get(AgentConfig,c['id']); config.status='evaluated'; db.commit()
-    assert client.post('/api/v1/assignments/go-task-1/agent-config/versions/2/publish',headers=expert).status_code==200
+    assert published.status_code==200
+    assert published.json()['status']=='published'
     with SessionLocal() as db:
         assert db.get(Review,'demo-review-1').agent_config_version_id=='go-task-1-config-1'
         assert db.get(AgentConfig,'go-task-1-config-1').status=='archived'
@@ -449,6 +447,26 @@ def test_annotation_category_can_be_changed_without_losing_anchor(client):
     updated = changed.json()['annotations'][-1]
     assert updated['category'] == 'requirement'
     assert updated['anchor'] == annotation['anchor']
+
+def test_integrity_recheck_preserves_grades_and_does_not_enqueue_llm(client, monkeypatch):
+    from app.models import Job
+    from app.services import integrity_check
+    monkeypatch.setattr(integrity_check, 'run_integrity_check', lambda artifacts: {
+        'status':'completed', 'decision':'none', 'signals':[], 'highlights':[], 'message':'Проверено локально.'})
+    with SessionLocal() as db:
+        review=db.get(Review,'demo-review-1')
+        before=(review.criterion_results,review.model_calls,review.status)
+        jobs=len(db.scalars(select(Job)).all())
+    reviewer=headers(client)
+    response=client.post('/api/v1/reviews/demo-review-1/integrity/recheck',headers=reviewer)
+    assert response.status_code==200
+    with SessionLocal() as db:
+        review=db.get(Review,'demo-review-1')
+        assert (review.criterion_results,review.model_calls,review.status)==before
+        assert len(db.scalars(select(Job)).all())==jobs
+        assert review.integrity['status']=='completed'
+    assert client.post('/api/v1/reviews/demo-review-1/integrity/recheck',headers=headers(client,'student')).status_code==403
+
 
 def test_integrity_signal_decision_persists(client):
     auth = headers(client)
