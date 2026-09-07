@@ -1,0 +1,7 @@
+node_modules
+dist
+.work
+backend
+index.html
+project context.md
+package-lock.json
